@@ -159,6 +159,6 @@ dmypy.json
 .pyre/
 
 # MLG Stuff
-.idea/*
+.idea/
 data/*.pdf
-results/*
+results/
