@@ -33,7 +33,7 @@ class Node:
             :return: None; the neighbor is added to the list
             """
             neighbor = Node.nodes[nrow, ncol]
-            cost = neighbor.cost
+            cost = neighbor.terrain
             heappush(self.neighbors, (cost, nrow, ncol))
             # If the neighbor has wells, you aren't allowed to stop there.
             if neighbor.wells == 0:
@@ -61,21 +61,23 @@ class Node:
     def __init__(self, row, col):
         self.row: int = row
         self.col: int = col
-        self.cost: int = 0
+        self.terrain: int = 0
         self.wells: int = 0
         self.exhausted: bool = False
         self.goal: bool = False
         self.derrick: bool = False
         self.neighbors = []  # a priority queue
-        self.totalcost = sys.maxsize
+        self.totalcost: int = sys.maxsize
+        self.previousnode = -1  # will be set when visited
 
     def __str__(self):
-        s = f'node[{self.row},{self.col}] cost: {self.cost}, '
+        s = f'node[{self.row},{self.col}] terrain: {self.terrain}, '
         s += f'wells: {self.wells} '
         e = 'T' if self.exhausted else 'F'
         g = 'T' if self.goal else 'F'
         d = 'T' if self.derrick else 'F'
         s += f'exhausted: {e}, goal: {g}, derrick: {d}, '
+        s += f'totcost: {"∞" if self.totalcost == sys.maxsize else self.totalcost}, '
         s += f'neighbors: {self.neighbors}'
         return s
 
@@ -98,18 +100,20 @@ def read_board(csvfile):
     :return: an array of strings, each describing a cell, as above
     """
     r = []  # rows
-    line = csvfile.readline().strip()
-    c = line.split(',')
-    r.append(c)
-    ncols = len(c)
-    nline = 1
-    for line in csvfile:
+    ncols = 0
+    for nline, line in enumerate(csvfile):
         nline += 1
         c = line.strip().split(',')
+        if ncols == 0:
+            ncols = len(c)
         if len(c) != ncols:
-            raise ValueError(f"Length of line {nline} is {len(c)}, {ncols} expected.")
+            raise ValueError(f"Length of line {nline + 1} is {len(c)}, {ncols} expected.")
         r.append(c)
-    return list(zip(*r))  # invert the array giving a list of tuples
+    # board = list(map(list, zip(*board)))  # create list of lists, not tuples
+    board = list(zip(*r))  # invert the array giving a list of tuples
+    if _args.verbose >= 2:
+        print(board)
+    return board
 
 
 def parse_board(rawboard, nplayers):
@@ -117,7 +121,7 @@ def parse_board(rawboard, nplayers):
 
     :param rawboard: The board produced by read_board()
     :param nplayers: If equals 3, exclude wells from cells with a trailing "x".
-    :return: An array of tuples, (terrain, # of wells)
+    :return: An array of Node instances
     """
     three_players = nplayers == 3
     nrows = len(rawboard)
@@ -129,7 +133,7 @@ def parse_board(rawboard, nplayers):
             m = re.match(r'(\d?)(\.(\d)(x?))?', cell := rawboard[r][c])
             if m is None:
                 raise ValueError(f"In row {r}, col {c}, '{cell}' failed match.")
-            node.cost = 1 if m.group(1) == '' else int(m.group(1))
+            node.terrain = 1 if m.group(1) == '' else int(m.group(1))
             if m.group(3):  # if wells are specified
                 node.wells = 0 if (m.group(4) == 'x' and three_players
                                    ) else int(m.group(3))
@@ -141,14 +145,12 @@ def parse_board(rawboard, nplayers):
 
 def main(args):
     rawboard = read_board(args.incsv)
-    print(rawboard)
     parse_board(rawboard, 4)
     rows, cols = Node.nodes.shape
     for row in range(rows):
         for col in range(cols):
             print(Node.nodes[row, col])
 
-    # board = list(map(list, zip(*board)))
     # print(board)
 
 
