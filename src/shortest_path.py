@@ -96,11 +96,11 @@ def dijkstra(a_graph, start):
             if new_dist < nextv_dist:
                 nextv.distance = new_dist
                 nextv.previous = current
-                print('updated : current = %s next = %s new_dist = %s'
-                      % (current.id, nextv.get_id(), nextv_dist))
+                updated = 'updated'
             else:
-                print('not updated : current = %s next = %s new_dist = %s'
-                      % (current.id(), nextv.id, nextv_dist))
+                updated = 'not updated'
+            print('%s : current = %s next = %s new_dist = %s'
+                  % (updated, current.id, nextv.id, nextv_dist))
 
         # Rebuild heap
         # Put all vertices not visited into the queue
