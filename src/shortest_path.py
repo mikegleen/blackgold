@@ -77,7 +77,7 @@ def dijkstra(a_graph, start):
     # Set the distance for the start node to zero
     start.distance = 0
 
-    # Put tuple pair into the priority queue
+    # Put the vertices into the priority queue
     unvisited_queue = [v for v in a_graph]
     heapq.heapify(unvisited_queue)
 
