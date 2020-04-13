@@ -1,16 +1,16 @@
 """
 https://www.bogotobogo.com/python/python_Dijkstras_Shortest_Path_Algorithm.php
 """
-import heapq
+import heapq  # move from middle of file
 import sys
 
 
 class Vertex:
-    def __init__(self, node_id):
+    def __init__(self, node_id):  # "node_id" is more descriptive
         self.id = node_id
         self.adjacent = {}
         # Set distance to infinity for all nodes
-        self.distance = sys.maxsize
+        self.distance = sys.maxsize  # 2to3
         # Mark all nodes unvisited
         self.visited = False
         # Predecessor
@@ -20,10 +20,12 @@ class Vertex:
         self.adjacent[neighbor] = weight
 
     def get_connections(self):
-        return list(self.adjacent.keys())
+        return list(self.adjacent.keys())  # 2to3
 
     def get_weight(self, neighbor):
         return self.adjacent[neighbor]
+    
+    # Remove getters and setters as your use of them was inconsistent and they are not very Pythonic.
 
     def __str__(self):
         return str(self.id) + ' adjacent: ' + str([x.id for x in self.adjacent])
@@ -43,13 +45,13 @@ class Graph:
         return iter(self.vert_dict.values())
 
     def add_vertex(self, node):
-        self.num_vertices += 1
+        self.num_vertices += 1  # just because
         new_vertex = Vertex(node)
         self.vert_dict[node] = new_vertex
         return new_vertex
 
     def get_vertex(self, n):
-        return self.vert_dict.get(n, None)
+        return self.vert_dict.get(n, None)  # use the built-in function
 
     def add_edge(self, frm, to, cost=0):
         if frm not in self.vert_dict:
@@ -61,7 +63,7 @@ class Graph:
         self.vert_dict[to].add_neighbor(self.vert_dict[frm], cost)
 
     def get_vertices(self):
-        return list(self.vert_dict.keys())
+        return list(self.vert_dict.keys())  # 2to3
 
 
 def shortest(v, path):
@@ -72,12 +74,13 @@ def shortest(v, path):
     return
 
 
-def dijkstra(a_graph, start):
+def dijkstra(a_graph, start):   # change aGraph to a_graph because PyCharm was whining about it
     print('''Dijkstra's shortest path''')
     # Set the distance for the start node to zero
     start.distance = 0
 
     # Put tuple pair into the priority queue
+    # This is now a list of vertices because, having added __lt__(), they are now comparable.
     unvisited_queue = [v for v in a_graph]
     heapq.heapify(unvisited_queue)
 
@@ -87,7 +90,7 @@ def dijkstra(a_graph, start):
         current.visited = True
 
         # for next in v.adjacent:
-        for nextv in current.adjacent:
+        for nextv in current.adjacent:  # "next" was shadowing a built-in.
             # if visited, skip
             if nextv.visited:
                 continue
@@ -103,6 +106,7 @@ def dijkstra(a_graph, start):
                   % (updated, current.id, nextv.id, nextv_dist))
 
         # Rebuild heap
+        # Removed redundant code.
         # Put all vertices not visited into the queue
         unvisited_queue = [v for v in a_graph if not v.visited]
         heapq.heapify(unvisited_queue)
@@ -143,4 +147,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main()  # moved code to main function to avoid "shadowing in outer scope" warnings.
+    
