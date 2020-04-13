@@ -1,12 +1,13 @@
-'''
+"""
 https://www.bogotobogo.com/python/python_Dijkstras_Shortest_Path_Algorithm.php
-'''
-
+"""
+import heapq
 import sys
 
+
 class Vertex:
-    def __init__(self, node):
-        self.id = node
+    def __init__(self, node_id):
+        self.id = node_id
         self.adjacent = {}
         # Set distance to infinity for all nodes
         self.distance = sys.maxsize
@@ -15,32 +16,23 @@ class Vertex:
         # Predecessor
         self.previous = None
 
-    def add_neighbor(self, neighbor, weight=0):
+    def add_neighbor(self, neighbor, weight):
         self.adjacent[neighbor] = weight
 
     def get_connections(self):
         return list(self.adjacent.keys())
 
-    def get_id(self):
-        return self.id
-
     def get_weight(self, neighbor):
         return self.adjacent[neighbor]
 
-    def set_distance(self, dist):
-        self.distance = dist
-
-    def get_distance(self):
-        return self.distance
-
-    def set_previous(self, prev):
-        self.previous = prev
-
-    def set_visited(self):
-        self.visited = True
-
     def __str__(self):
         return str(self.id) + ' adjacent: ' + str([x.id for x in self.adjacent])
+
+    # Python 3 issue, see:
+    # https://stackoverflow.com/questions/43477958/typeerror-not-supported-between-instances-python
+    def __lt__(self, other):
+        return self.distance < other.distance
+
 
 class Graph:
     def __init__(self):
@@ -48,21 +40,18 @@ class Graph:
         self.num_vertices = 0
 
     def __iter__(self):
-        return iter(list(self.vert_dict.values()))
+        return iter(self.vert_dict.values())
 
     def add_vertex(self, node):
-        self.num_vertices = self.num_vertices + 1
+        self.num_vertices += 1
         new_vertex = Vertex(node)
         self.vert_dict[node] = new_vertex
         return new_vertex
 
     def get_vertex(self, n):
-        if n in self.vert_dict:
-            return self.vert_dict[n]
-        else:
-            return None
+        return self.vert_dict.get(n, None)
 
-    def add_edge(self, frm, to, cost = 0):
+    def add_edge(self, frm, to, cost=0):
         if frm not in self.vert_dict:
             self.add_vertex(frm)
         if to not in self.vert_dict:
@@ -74,62 +63,52 @@ class Graph:
     def get_vertices(self):
         return list(self.vert_dict.keys())
 
-    def set_previous(self, current):
-        self.previous = current
-
-    def get_previous(self, current):
-        return self.previous
 
 def shortest(v, path):
-    ''' make shortest path from v.previous'''
+    """ make shortest path from v.previous"""
     if v.previous:
-        path.append(v.previous.get_id())
+        path.append(v.previous.id)
         shortest(v.previous, path)
     return
 
-import heapq
 
-def dijkstra(aGraph, start):
+def dijkstra(a_graph, start):
     print('''Dijkstra's shortest path''')
     # Set the distance for the start node to zero
-    start.set_distance(0)
+    start.distance = 0
 
     # Put tuple pair into the priority queue
-    unvisited_queue = [(v.get_distance(),v) for v in aGraph]
+    unvisited_queue = [v for v in a_graph]
     heapq.heapify(unvisited_queue)
 
     while len(unvisited_queue):
         # Pops a vertex with the smallest distance
-        uv = heapq.heappop(unvisited_queue)
-        current = uv[1]
-        current.set_visited()
+        current = heapq.heappop(unvisited_queue)
+        current.visited = True
 
-        #for next in v.adjacent:
-        for next in current.adjacent:
+        # for next in v.adjacent:
+        for nextv in current.adjacent:
             # if visited, skip
-            if next.visited:
+            if nextv.visited:
                 continue
-            new_dist = current.get_distance() + current.get_weight(next)
-
-            if new_dist < next.get_distance():
-                next.set_distance(new_dist)
-                next.set_previous(current)
-                print('updated : current = %s next = %s new_dist = %s' \
-                        %(current.get_id(), next.get_id(), next.get_distance()))
+            new_dist = current.distance + current.get_weight(nextv)
+            nextv_dist = nextv.distance
+            if new_dist < nextv_dist:
+                nextv.distance = new_dist
+                nextv.previous = current
+                print('updated : current = %s next = %s new_dist = %s'
+                      % (current.id, nextv.get_id(), nextv_dist))
             else:
-                print('not updated : current = %s next = %s new_dist = %s' \
-                        %(current.get_id(), next.get_id(), next.get_distance()))
+                print('not updated : current = %s next = %s new_dist = %s'
+                      % (current.id(), nextv.id, nextv_dist))
 
         # Rebuild heap
-        # 1. Pop every item
-        while len(unvisited_queue):
-            heapq.heappop(unvisited_queue)
-        # 2. Put all vertices not visited into the queue
-        unvisited_queue = [(v.get_distance(),v) for v in aGraph if not v.visited]
+        # Put all vertices not visited into the queue
+        unvisited_queue = [v for v in a_graph if not v.visited]
         heapq.heapify(unvisited_queue)
 
 
-if __name__ == '__main__':
+def main():
 
     g = Graph()
 
@@ -153,15 +132,15 @@ if __name__ == '__main__':
     print('Graph data:')
     for v in g:
         for w in v.get_connections():
-            vid = v.get_id()
-            wid = w.get_id()
-            print('( %s , %s, %3d)'  % ( vid, wid, v.get_weight(w)))
-
+            print('( %s , %s, %3d)' % (v.id, w.id, v.get_weight(w)))
 
     dijkstra(g, g.get_vertex('a'))
 
     target = g.get_vertex('e')
-    path = [target.get_id()]
+    path = [target.id]
     shortest(target, path)
-    print('The shortest path : %s' %(path[::-1]))
+    print('The shortest path : %s' % (path[::-1]))
 
+
+if __name__ == '__main__':
+    main()
