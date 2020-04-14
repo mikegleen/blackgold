@@ -2,7 +2,7 @@
 
 """
 import argparse
-from heapq import heappush
+import heapq
 import re
 import sys
 
@@ -34,7 +34,7 @@ class Node:
             """
             neighbor = Node.nodes[nrow, ncol]
             cost = neighbor.terrain
-            heappush(self.neighbors, (cost, nrow, ncol))
+            heapq.heappush(self.neighbors, (cost, nrow, ncol))
             # If the neighbor has wells, you aren't allowed to stop there.
             if neighbor.wells == 0:
                 neighbor.goal |= self.wells > 0
@@ -80,6 +80,9 @@ class Node:
         s += f'totcost: {"∞" if self.totalcost == sys.maxsize else self.totalcost}, '
         s += f'neighbors: {self.neighbors}'
         return s
+
+    def __lt__(self, other):
+        return self.terrain < other.terrain
 
 
 def read_board(csvfile):
