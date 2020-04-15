@@ -16,9 +16,8 @@ class Node:
     goal: True if a neighbor is an oil well; changes to False if a derrick is built
     """
     #
-    nodes = None
 
-    def set_neighbors(self):
+    def set_neighbors(self, nodes):
         """
         neighbors contains a priority queue of tuples of (cost, row, column)
         A node can have up to 4 neighbors, reduced if it is on an edge.
@@ -32,14 +31,16 @@ class Node:
             :param ncol: neighbor column
             :return: None; the neighbor is added to the list
             """
-            neighbor = Node.nodes[nrow, ncol]
+            neighbor = nodes[nrow, ncol]
             cost = neighbor.terrain
-            heapq.heappush(self.neighbors, (cost, nrow, ncol))
-            # If the neighbor has wells, you aren't allowed to stop there.
+            # heapq.heappush(self.neighbors, (cost, nrow, ncol))
+            heapq.heappush(self.neighbors, neighbor)
+            # If the neighbor has wells, you aren't allowed to stop there,
+            # so it can't be a goal.
             if neighbor.wells == 0:
                 neighbor.goal |= self.wells > 0
 
-        rows, cols = Node.nodes.shape
+        rows, cols = nodes.shape
         if self.row > 0:
             set1neighbor(self.row - 1, self.col)
         if self.col > 0:
@@ -71,36 +72,51 @@ class Node:
         self.previousnode = -1  # will be set when visited
 
     def __str__(self):
-        s = f'node[{self.row},{self.col}] terrain: {self.terrain}, '
-        s += f'wells: {self.wells} '
         e = 'T' if self.exhausted else 'F'
         g = 'T' if self.goal else 'F'
         d = 'T' if self.derrick else 'F'
-        s += f'exhausted: {e}, goal: {g}, derrick: {d}, '
-        s += f'totcost: {"∞" if self.totalcost == sys.maxsize else self.totalcost}, '
-        s += f'neighbors: {self.neighbors}'
+        s = f'node[{self.row},{self.col}] terrain: {self.terrain}, '
+        # s += f'wells: {self.wells} '
+        # s += f'exhausted: {e}, goal: {g}, derrick: {d}, '
+        # s += f'totcost: {"∞" if self.totalcost == sys.maxsize else self.totalcost}, '
+        # s += f'neighbors: {sorted(self.neighbors)}'
+
+        s = f'n[{self.row},{self.col}] t: {self.terrain}, '
+        s += f'w: {self.wells} '
+        s += f'ex: {e}, goal: {g}, derrick: {d}, '
+        s += f'tot: {"∞" if self.totalcost == sys.maxsize else self.totalcost}, '
+        s += f'neighbors: {sorted(self.neighbors)}'
+        return s
+
+    def __repr__(self):
+        s = f'n[{self.row},{self.col}].t: {self.terrain}'
         return s
 
     def __lt__(self, other):
         return self.terrain < other.terrain
 
 
-def read_board(csvfile):
+class Graph:
+    board = None
+
+
+def create_board(csvfile, nplayers):
     """
     Each line in the csv file contains one column of the board. (It was easier
     to type this way)
     :param csvfile: The file contains a description of the board. Each cell
     contains:
 
-    <cell> ::= <terrain> | <terrain> "." <oilwell> | "." <oilwell>
-    <terrain> ::= 1 | 2 | 3
-    <oilwell> ::= <wellcount> | <wellcount> <3-player marker>
-    <wellcount> ::= 1 | 2 | 3
-    <3-player marker> = "x"
+        <cell> ::= <terrain> | <terrain> "." <oilwell> | "." <oilwell>
+        <terrain> ::= 1 | 2 | 3
+        <oilwell> ::= <wellcount> | <wellcount> <3-player marker>
+        <wellcount> ::= 1 | 2 | 3
+        <3-player marker> = "x"
 
     If <terrain> is absent, "1" is assumed.
 
-    :return: an array of strings, each describing a cell, as above
+    :param nplayers: If equals 3, exclude wells from cells with a trailing "x".
+    :return: An array of Node instances
     """
     r = []  # rows
     ncols = 0
@@ -113,19 +129,9 @@ def read_board(csvfile):
             raise ValueError(f"Length of line {nline + 1} is {len(c)}, {ncols} expected.")
         r.append(c)
     # board = list(map(list, zip(*board)))  # create list of lists, not tuples
-    board = list(zip(*r))  # invert the array giving a list of tuples
+    rawboard = list(zip(*r))  # invert the array giving a list of tuples
     if _args.verbose >= 2:
-        print(board)
-    return board
-
-
-def parse_board(rawboard, nplayers):
-    """
-
-    :param rawboard: The board produced by read_board()
-    :param nplayers: If equals 3, exclude wells from cells with a trailing "x".
-    :return: An array of Node instances
-    """
+        print(rawboard)
     three_players = nplayers == 3
     nrows = len(rawboard)
     ncols = len(rawboard[0])
@@ -140,19 +146,21 @@ def parse_board(rawboard, nplayers):
             if m.group(3):  # if wells are specified
                 node.wells = 0 if (m.group(4) == 'x' and three_players
                                    ) else int(m.group(3))
-    Node.nodes = nodes
     for r in nodes:
         for node in r:
-            node.set_neighbors()
+            node.set_neighbors(nodes)
+    return nodes
 
 
 def main(args):
-    rawboard = read_board(args.incsv)
-    parse_board(rawboard, 4)
-    rows, cols = Node.nodes.shape
-    for row in range(rows):
-        for col in range(cols):
-            print(Node.nodes[row, col])
+    Graph.board = create_board(args.incsv, 4)
+    rows, cols = Graph.board.shape
+    if _args.verbose >= 1:
+        print(f'{rows=} {cols=}')
+    if _args.verbose >= 2:
+        for row in range(rows):
+            for col in range(cols):
+                print(Graph.board[row, col])
 
     # print(board)
 
