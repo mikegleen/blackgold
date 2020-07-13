@@ -3,6 +3,7 @@
 """
 import math
 import numpy as np
+import matplotlib.pyplot as plt
 
 debug = False
 maxblue = 9000.
@@ -42,8 +43,8 @@ def next_price_2(oldprice, throw):
     color = dicecolors[throw]
     if color == red:
         newprice = oldprice - deltaprice
-        if newprice < 500.:
-            newprice = 500.
+        if newprice < 1500.:
+            newprice = 1500.
     else:                     # dice color is blue
         newprice = oldprice + deltaprice
         if newprice > 9000.:
@@ -54,7 +55,7 @@ def next_price_2(oldprice, throw):
 
 
 def testnext():
-    for price in range(500, 9001, 500):
+    for price in range(1500, 9001, 500):
         for ix in range(6):
             next_price_1(price, ix)
 
@@ -67,41 +68,54 @@ def game(moves):
         ix = np.random.randint(6)
         price1 = next_price_1(price1, ix)
         prices1[t] = price1
-        price2 = next_price_2(price1, ix)
+        count1[price1] += 1
+        price2 = next_price_2(price2, ix)
         prices2[t] = price2
+        count2[price2] += 1
     mean1 = np.mean(prices1)
     stddev1 = math.sqrt(np.var(prices1, ddof=1))
-    # print(f'algorithm 1: {mean1=} {stddev1= }')
+    # print(from_node'algorithm 1: {mean1=} {stddev1= }')
     mean2 = np.mean(prices2)
     stddev2 = math.sqrt(np.var(prices2, ddof=1))
-    # print(f'algorithm 2: {mean2=} {stddev2= }')
+    # print(from_node'algorithm 2: {mean2=} {stddev2= }')
     return mean1, mean2, stddev1, stddev2
 
 
+def stats(an, mm, ss, count, label):
+    print(f'Algorithm {an}:')
+    meanm = np.mean(mm)
+    stddevm = math.sqrt(np.var(mm, ddof=1))
+    means = np.mean(ss)
+    stddevs = math.sqrt(np.var(ss, ddof=1))
+    print(f'{meanm=:.2f}, {stddevm=:.2f}, {means=:.2f}, {stddevs=:.2f}')
+    if label.startswith('Modified'):
+        plt.plot(list(count), list(count.values()), '-ok', label=label, color='red')
+    else:
+        plt.plot(list(count), list(count.values()), '-ok', label=label, color='blue')
+
+
 if __name__ == '__main__':
-    iterations = 1000
-    mm1 = np.zeros(iterations)
-    mm2 = np.zeros(iterations)
-    ss1 = np.zeros(iterations)
-    ss2 = np.zeros(iterations)
-    for n in range(iterations):
-        m1, m2, s1, s2 = game(150)
+    games = 500
+    moves_per_game = 100
+    print(f'{games=}, moves per games: {moves_per_game}')
+    mm1 = np.zeros(games)
+    mm2 = np.zeros(games)
+    ss1 = np.zeros(games)
+    ss2 = np.zeros(games)
+    count1 = {float(x): 0.0 for x in range(1500, 9001, 500)}
+    count2 = {float(x): 0.0 for x in range(1500, 9001, 500)}
+
+    for n in range(games):
+        m1, m2, s1, s2 = game(moves_per_game)
         mm1[n] = m1
         mm2[n] = m2
         ss1[n] = s1
         ss2[n] = s2
-    print('Algorithm 1:')
-    mean1m = np.mean(mm1)
-    stddev1m = math.sqrt(np.var(mm1, ddof=1))
-    mean1s = np.mean(ss1)
-    stddev1s = math.sqrt(np.var(ss1, ddof=1))
-    print(f'{mean1m=:.2f}, {stddev1m=:.2f}, {mean1s=:.2f}, {stddev1s=:.2f}')
-
-    print('Algorithm 2:')
-    mean2m = np.mean(mm2)
-    stddev2m = math.sqrt(np.var(mm2, ddof=1))
-    mean2s = np.mean(ss2)
-    stddev2s = math.sqrt(np.var(ss2, ddof=1))
-    print(f'{mean2m=:.2f}, {stddev2m=:.2f}, {mean2s=:.2f}, {stddev2s=:.2f}')
+    plt.xlabel('Oil Price')
+    plt.ylabel(f'Occurences in {games} games, each of {moves_per_game} moves')
+    stats(1, mm1, ss1, count1, "Original Algorithm")
+    stats(2, mm2, ss2, count2, "Modified Algorithm")
+    plt.legend()
+    plt.show()
 
     # testnext()
