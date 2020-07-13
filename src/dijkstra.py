@@ -4,6 +4,13 @@
 from collections import defaultdict
 from heapq import *
 
+TRACE = True
+
+
+def trace(s):
+    if TRACE:
+        print(s)
+
 
 def dijkstra(edges, from_node, to_node):
     graph = defaultdict(list)
@@ -14,22 +21,29 @@ def dijkstra(edges, from_node, to_node):
     seen = set()
     mins = {from_node: 0}
     while node_queue:
-        # print(f'{node_queue=}')
+        trace(f'{node_queue=}')
+        # v1 is the lowest cost node in the queue
         cost, v1, path = heappop(node_queue)
-        # print(f'{cost=}, {v1=}, {path=}')
+        trace(f'  {cost=}, {v1=}, {path=}')
         if v1 not in seen:
             seen.add(v1)
-            # print(f'{seen=}')
+            trace(f'  {seen=}')
             path: tuple = (v1, path)
+            trace(f'  {path=}')
             if v1 == to_node:
+                trace(f'returning {cost=}, {path=}')
                 return cost, path
-
-            for c, v2 in graph.get(v1, ()):
+            # v2
+            for next_step_cost, v2 in graph.get(v1, ()):
+                trace(f'    {v2=}, {next_step_cost=}')
                 if v2 in seen:
+                    trace('    skip')
                     continue
                 prev = mins.get(v2, None)
-                nextcost = cost + c
+                nextcost = cost + next_step_cost
+                trace(f'    {prev=}, {nextcost=}')
                 if prev is None or nextcost < prev:
+                    trace(f'    mins[{v2}] = {nextcost}, pushing {v2}')
                     mins[v2] = nextcost
                     heappush(node_queue, (nextcost, v2, path))
 
@@ -52,11 +66,11 @@ def main():
     ]
 
     print("=== Dijkstra ===")
-    print(edges)
+    print('edges=', edges)
     print("A -> E:")
-    print(dijkstra(edges, "A", "E"))
-    print("F -> G:")
-    print(dijkstra(edges, "F", "G"))
+    print('result:', dijkstra(edges, "A", "E"))
+    # print("F -> G:")
+    # print('result:',dijkstra(edges, "F", "G"))
 
 
 if __name__ == "__main__":
