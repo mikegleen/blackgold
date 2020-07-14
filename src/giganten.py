@@ -2,7 +2,6 @@
 
 """
 import argparse
-import copy
 import heapq
 import re
 import sys
@@ -39,15 +38,15 @@ class Node:
             if neighbor.wells == 0:
                 neighbor.goal |= self.wells > 0
 
-        rows = len(nodes)
-        cols = len(nodes[0])
+        lastrow = len(nodes) - 1
+        lastcol = len(nodes[0]) - 1
         if self.row > 0:
             set1neighbor(self.row - 1, self.col)
         if self.col > 0:
             set1neighbor(self.row, self.col - 1)
-        if self.row < rows - 1:
+        if self.row < lastrow:
             set1neighbor(self.row + 1, self.col)
-        if self.col < cols - 1:
+        if self.col < lastcol:
             set1neighbor(self.row, self.col + 1)
 
     def add_derrick(self):
@@ -219,7 +218,7 @@ def djikstra(a_graph, root):
             if new_dist < nextv_dist:
                 nextv.distance =  new_dist
                 nextv.previous = current
-                updated = 'updated'
+                updated = 'updated'  # just used for logging
             else:
                 updated = 'not updated'
             if _args.verbose >= 3:
@@ -237,7 +236,7 @@ def djikstra(a_graph, root):
 
 
 def main(args):
-    graph = create_graph(args.incsv, 4)
+    graph = create_graph(args.incsv, nplayers=4)
     rows, cols = graph.get_rows_cols()
     if _args.verbose >= 1:
         print(f'{rows=} {cols=}')
