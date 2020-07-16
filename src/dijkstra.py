@@ -12,12 +12,25 @@ def trace(s):
         print(s)
 
 
-def dijkstra(edges, from_node, to_node):
+def unwindpath(p):
+    # Turn the path in the form (cost,(e, (b, (a, ())))) into (cost, [a, b, e])
+    cost = p[0]
+    pp = []
+    q = p
+    while q[1]:
+        pp.append(q[1][0])
+        q = q[1]
+    return cost, pp
+
+
+def dijkstra(edges, from_node, to_node, two_way=False):
     graph = defaultdict(list)
     for fromnode, tonode, cost in edges:
         graph[fromnode].append((cost, tonode))
+        if two_way:
+            graph[tonode].append((cost, fromnode))
     del fromnode, tonode
-    node_queue = [(0, from_node, ())]
+    node_queue = [(0, from_node, list())]
     seen = set()
     mins = {from_node: 0}
     while node_queue:
@@ -28,7 +41,7 @@ def dijkstra(edges, from_node, to_node):
         if v1 not in seen:
             seen.add(v1)
             trace(f'  {seen=}')
-            path: tuple = (v1, path)
+            path = (v1, path)
             trace(f'  {path=}')
             if v1 == to_node:
                 trace(f'returning {cost=}, {path=}')
@@ -43,7 +56,7 @@ def dijkstra(edges, from_node, to_node):
                 nextcost = cost + next_step_cost
                 trace(f'    {prev=}, {nextcost=}')
                 if prev is None or nextcost < prev:
-                    trace(f'    mins[{v2}] = {nextcost}, pushing {v2}')
+                    trace(f'    mins[{v2}] = {nextcost}, pushing ({nextcost}, {v2}, {path})')
                     mins[v2] = nextcost
                     heappush(node_queue, (nextcost, v2, path))
 
@@ -68,7 +81,8 @@ def main():
     print("=== Dijkstra ===")
     print('edges=', edges)
     print("A -> E:")
-    print('result:', dijkstra(edges, "A", "E"))
+    print('result:', pp := dijkstra(edges, "A", "E", two_way=False))
+    print('unwound:', unwindpath(pp))
     # print("F -> G:")
     # print('result:',dijkstra(edges, "F", "G"))
 

@@ -216,7 +216,7 @@ def djikstra(a_graph, root):
             new_dist = current.distance + nextv.terrain
             nextv_dist = nextv.distance
             if new_dist < nextv_dist:
-                nextv.distance =  new_dist
+                nextv.distance = new_dist
                 nextv.previous = current
                 updated = 'updated'  # just used for logging
             else:
