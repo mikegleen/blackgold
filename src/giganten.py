@@ -129,15 +129,16 @@ class Graph:
             node.totalcost = sys.maxsize
             node.visited = False
 
-    def print_board(self):
+    def dump_board(self):
         for row in range(self.rows):
             for col in range(self.columns):
-                print(self.board[row][col])
-                if self.board[row][col].previous:
-                    self.board[row][col].print_path()
+                node = self.board[row][col]
+                print(node)
+                if node.previous:
+                    node.print_path()
 
 
-def create_graph(csvfile, nplayers):
+def read_board(csvfile):
     """
     Each line in the csv file describes one column of the board. (It was easier
     to type this way). Each line contains cells separated by white space.
@@ -152,8 +153,8 @@ def create_graph(csvfile, nplayers):
     If <terrain> is absent, "1" is assumed.
 
     :param csvfile: The file containing the board as described above.
-    :param nplayers: If equals 3, exclude wells from cells with a trailing "x".
-    :return: An array of Node instances
+    :return: A list of rows containing tuples corresponding to the columns.
+             Each cell is the string as defined above.
     """
     r = []  # rows
     ncols = 0
@@ -169,6 +170,15 @@ def create_graph(csvfile, nplayers):
     rawboard = list(zip(*r))
     if _args.verbose >= 2:
         print('rawboard:', rawboard)
+    return rawboard
+
+
+def create_graph(rawboard, nplayers):
+    """
+    :param rawboard: The list created by read_board()
+    :param nplayers: If equals 3, exclude wells from cells with a trailing "x".
+    :return: An array of Node instances
+    """
     three_players = nplayers == 3
     nrows = len(rawboard)
     ncols = len(rawboard[0])
@@ -183,9 +193,6 @@ def create_graph(csvfile, nplayers):
             if m.group(3):  # if wells are specified
                 node.wells = 0 if (m.group(4) == 'x' and three_players
                                    ) else int(m.group(3))
-    # for r in board:
-    #     for node in r:
-    #         node.set_neighbors(board)
     # print(nodes)
     graph = Graph(board)
     return graph
@@ -199,7 +206,7 @@ def djikstra(a_graph, root):
     """
     root.distance = 0
     unvisited_queue = a_graph.graph[:]
-    heapq.heapify(unvisited_queue)
+    heapq.heapify(unvisited_queue)  # The Node __lt__ method compares distances
     while len(unvisited_queue):
         # Pops a vertex with the smallest distance
         current = heapq.heappop(unvisited_queue)
@@ -236,14 +243,15 @@ def djikstra(a_graph, root):
 
 
 def main(args):
-    graph = create_graph(args.incsv, nplayers=4)
+    rawboard = read_board(args.incsv)
+    graph = create_graph(rawboard, nplayers=4)
     rows, cols = graph.get_rows_cols()
     if _args.verbose >= 1:
         print(f'{rows=} {cols=}')
     graph.reset_totalcost()
     djikstra(graph, graph.board[0][0])
     if _args.verbose >= 2:
-        graph.print_board()
+        graph.dump_board()
     # print(board)
 
 
