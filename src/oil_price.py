@@ -1,5 +1,16 @@
 """
+This program compares two rules for adjusting the price of oil in Giganten.
 
+Rule 1 is the standard as defined in the game rules.
+    You role a die with numbers 2, 3, and 4, each in blue and red.
+    If the old price is in the red zone, then ignore the die color and increase
+        the price according to the number thrown.
+    Similarly, if the old price is in the blue zone, decreased it.
+    If the old price is in the white zone (the middle), increase the price if
+        the color of the die is blue, decreased otherwise.
+
+Rule 2 changes the rule so that the die color always controls whether the price
+    increases or decreases, only limited by the minimum and maximum price.
 """
 import math
 import numpy as np
@@ -81,17 +92,14 @@ def game(moves):
     return mean1, mean2, stddev1, stddev2
 
 
-def stats(an, mm, ss, count, label):
+def stats(an, mm, ss, count, lbl, color):
     print(f'Algorithm {an}:')
     meanm = np.mean(mm)
     stddevm = math.sqrt(np.var(mm, ddof=1))
     means = np.mean(ss)
     stddevs = math.sqrt(np.var(ss, ddof=1))
     print(f'{meanm=:.2f}, {stddevm=:.2f}, {means=:.2f}, {stddevs=:.2f}')
-    if label.startswith('Modified'):
-        plt.plot(list(count), list(count.values()), '-ok', label=label, color='red')
-    else:
-        plt.plot(list(count), list(count.values()), '-ok', label=label, color='blue')
+    plt.plot(list(count), list(count.values()), '-ok', label=lbl, color=color)
 
 
 if __name__ == '__main__':
@@ -111,11 +119,10 @@ if __name__ == '__main__':
         mm2[n] = m2
         ss1[n] = s1
         ss2[n] = s2
+
     plt.xlabel('Oil Price')
     plt.ylabel(f'Occurences in {games} games, each of {moves_per_game} moves')
-    stats(1, mm1, ss1, count1, "Original Algorithm")
-    stats(2, mm2, ss2, count2, "Modified Algorithm")
+    stats(1, mm1, ss1, count1, "Original Algorithm", 'blue')
+    stats(2, mm2, ss2, count2, "Modified Algorithm", 'red')
     plt.legend()
     plt.show()
-
-    # testnext()
