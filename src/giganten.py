@@ -111,13 +111,29 @@ class Node:
 class Graph:
     # board will hold the numpy array[rows, cols] of Node instances
 
-    def __init__(self, board):
+    def __init__(self, rawboard, nplayers):
+        three_players = nplayers == 3
+        nrows = len(rawboard)
+        ncols = len(rawboard[0])
+        board = [[Node(r, c) for c in range(ncols)] for r in range(nrows)]
+        # nodes = np.array(nodes)
+        for r, row in enumerate(board):
+            for c, node in enumerate(row):
+                # See read_board() for a description of the pattern
+                m = re.match(r'(\d?)(\.(\d)(x?))?', cell := rawboard[r][c])
+                if m is None:
+                    raise ValueError(
+                        f"In row {r}, col {c}, '{cell}' failed match.")
+                node.terrain = 1 if m.group(1) == '' else int(m.group(1))
+                if m.group(3):  # if wells are specified
+                    node.wells = 0 if (m.group(4) == 'x' and three_players
+                                       ) else int(m.group(3))
         self.board = board
-        self.rows = len(board)
-        self.columns = len(board[0])
+        self.rows = nrows
+        self.columns = ncols
         # Make a 1d view of the 2d board
         self.graph = [node for row in board for node in row]
-        print(self.graph)
+        # print(self.graph)
         for node in self.graph:
             node.set_neighbors(board)
 
@@ -173,35 +189,11 @@ def read_board(csvfile):
     return rawboard
 
 
-def create_graph(rawboard, nplayers):
-    """
-    :param rawboard: The list created by read_board()
-    :param nplayers: If equals 3, exclude wells from cells with a trailing "x".
-    :return: An array of Node instances
-    """
-    three_players = nplayers == 3
-    nrows = len(rawboard)
-    ncols = len(rawboard[0])
-    board = [[Node(r, c) for c in range(ncols)] for r in range(nrows)]
-    # nodes = np.array(nodes)
-    for r, row in enumerate(board):
-        for c, node in enumerate(row):
-            m = re.match(r'(\d?)(\.(\d)(x?))?', cell := rawboard[r][c])
-            if m is None:
-                raise ValueError(f"In row {r}, col {c}, '{cell}' failed match.")
-            node.terrain = 1 if m.group(1) == '' else int(m.group(1))
-            if m.group(3):  # if wells are specified
-                node.wells = 0 if (m.group(4) == 'x' and three_players
-                                   ) else int(m.group(3))
-    # print(nodes)
-    graph = Graph(board)
-    return graph
-
-
-def djikstra(a_graph, root):
+def djikstra(a_graph, root, maxcost=sys.maxsize):
     """
     :param a_graph: the Graph instance
     :param root: the node to start from
+    :param maxcost: Do not search for nodes more than maxcost away.
     :return:
     """
     root.distance = 0
@@ -244,7 +236,8 @@ def djikstra(a_graph, root):
 
 def main(args):
     rawboard = read_board(args.incsv)
-    graph = create_graph(rawboard, nplayers=4)
+    # graph = create_graph(rawboard, nplayers=4)
+    graph = Graph(rawboard, args.nplayers)
     rows, cols = graph.get_rows_cols()
     if _args.verbose >= 1:
         print(f'{rows=} {cols=}')
@@ -262,6 +255,9 @@ def getargs():
         ''')
     parser.add_argument('incsv', type=argparse.FileType('r'), help='''
          The file containing the board description.''')
+    parser.add_argument('-n', '--nplayers', default=4, type=int, help='''
+    Specify the number of players; the default is 4.
+    ''')
     parser.add_argument('-v', '--verbose', default=1, type=int, help='''
     Modify verbosity.
     ''')
