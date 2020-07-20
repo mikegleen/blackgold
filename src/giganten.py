@@ -2,6 +2,7 @@
 
 """
 import argparse
+from colorama import Fore, Style
 import heapq
 import re
 import sys
@@ -13,7 +14,6 @@ class Node:
     exhausted: True if a derrick has been built and all of the oil has been extracted.
     goal: True if a neighbor is an oil well; changes to False if a derrick is built
     """
-    #
 
     def set_neighbors(self, nodes):
         """
@@ -77,6 +77,7 @@ class Node:
         self.exhausted: bool = False
         self.goal: bool = False
         self.derrick: bool = False
+        self.barrels = 0
         self.adjacent = []  # a priority queue
         self.distance: int = sys.maxsize
         self.previous = None  # will be set when visited
@@ -110,6 +111,14 @@ class Node:
 
 class Graph:
     # board will hold the numpy array[rows, cols] of Node instances
+
+    # for print_board: 0->illegal 1->flat 2->hilly 3->mountain
+    GREEN = Fore.GREEN
+    YELLOW = Fore.YELLOW
+    RESET = Style.RESET_ALL
+    RED = Fore.RED
+    TERRAIN_CH = ('@', GREEN + '——' + RESET, YELLOW + '~~' + RESET,
+                  RED + '^^' + RESET)
 
     def __init__(self, rawboard, nplayers):
         three_players = nplayers == 3
@@ -153,6 +162,23 @@ class Graph:
                 if node.previous:
                     node.print_path()
 
+    def print_board(self):
+        def pr_dist(node):
+            dist = node.distance
+            return f'{dist:2d}' if dist < sys.maxsize else ' ∞'
+
+        def pr_wells(node):
+            return'D' if node.derrick else 'W'
+        # self.board[4][13].derrick = True  # test feature
+        print('   ' + ''.join([f'| {n:02} ' for n in range(self.columns)]) + '|')
+        for nrow, row in enumerate(self.board):
+            print('   ' + '|————' * self.columns + '|')
+            r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
+            print(f' {nrow:02}|' + '|'.join(r1) + '|')
+            r2 = [pr_wells(n) * n.wells + ' ' * (4 - n.wells) for n in row]
+            print('   |' + '|'.join(r2) + '|')
+        print('   ' + '|————' * self.columns + '|')
+
 
 def read_board(csvfile):
     """
@@ -189,11 +215,11 @@ def read_board(csvfile):
     return rawboard
 
 
-def djikstra(a_graph, root, maxcost=sys.maxsize):
+def djikstra(a_graph, root, maxdistance=sys.maxsize):
     """
     :param a_graph: the Graph instance
     :param root: the node to start from
-    :param maxcost: Do not search for nodes more than maxcost away.
+    :param maxdistance: Do not search for nodes more than maxcost away.
     :return:
     """
     root.distance = 0
@@ -205,7 +231,10 @@ def djikstra(a_graph, root, maxcost=sys.maxsize):
         current.visited = True
         if _args.verbose >= 3:
             print(f'{current=}')
-        # for next in v.adjacent:
+        if current.distance >= maxdistance:
+            if _args.verbose >= 3:
+                print(f'    stopping at distance {current.distance}.')
+            continue
         for nextv in sorted(current.adjacent):
             # if visited, skip
             if nextv.visited:
@@ -230,8 +259,12 @@ def djikstra(a_graph, root, maxcost=sys.maxsize):
         unvisited_queue = [v for v in a_graph.graph if not v.visited]
         if _args.verbose >= 3:
             print(f'unvisited: {unvisited_queue}')
-
         heapq.heapify(unvisited_queue)
+
+    for node in a_graph.graph:
+        if maxdistance < node.distance < sys.maxsize:
+            node.distance = sys.maxsize
+            # print(f'{node.row}, {node.col}')
 
 
 def main(args):
@@ -242,10 +275,12 @@ def main(args):
     if _args.verbose >= 1:
         print(f'{rows=} {cols=}')
     graph.reset_totalcost()
-    djikstra(graph, graph.board[0][0])
+    djikstra(graph, graph.board[0][0], maxdistance=10)
     if _args.verbose >= 2:
         graph.dump_board()
     # print(board)
+    if args.print:
+        graph.print_board()
 
 
 def getargs():
@@ -257,6 +292,9 @@ def getargs():
          The file containing the board description.''')
     parser.add_argument('-n', '--nplayers', default=4, type=int, help='''
     Specify the number of players; the default is 4.
+    ''')
+    parser.add_argument('-p', '--print', action='store_true', help='''
+    Print the finished board with distances.
     ''')
     parser.add_argument('-v', '--verbose', default=1, type=int, help='''
     Modify verbosity.
