@@ -6,6 +6,7 @@ from colorama import Fore, Style
 import heapq
 import re
 import sys
+import time
 
 
 class Node:
@@ -96,13 +97,13 @@ class Node:
         s = f'{self.id} t: {self.terrain}, '
         s += f'w: {self.wells} '
         s += f'ex: {e}, goal: {g}, derrick: {d}, '
-        s += f'{self.previous=}, '
+        s += f'previous={repr(self.previous)}, '
         s += f'dist: {"∞" if self.distance == sys.maxsize else self.distance}, '
         s += f'adjacent: {sorted(self.adjacent)}'
         return s
 
     def __repr__(self):
-        s = f'{self.id}.t: {self.terrain}'
+        s = f'{self.id}'
         return s
 
     def __lt__(self, other):
@@ -155,20 +156,25 @@ class Graph:
             node.visited = False
 
     def dump_board(self):
+        print('Dump Board')
         for row in range(self.rows):
             for col in range(self.columns):
                 node = self.board[row][col]
+                print('printing node: ', end='')
                 print(node)
                 if node.previous:
+                    print('    printing path: ', end='')
                     node.print_path()
 
     def print_board(self):
+
         def pr_dist(node):
             dist = node.distance
-            return f'{dist:2d}' if dist < sys.maxsize else ' ∞'
+            return f'{dist:2d}' if dist < sys.maxsize else '  '
 
         def pr_wells(node):
             return'D' if node.derrick else 'W'
+
         # self.board[4][13].derrick = True  # test feature
         print('   ' + ''.join([f'| {n:02} ' for n in range(self.columns)]) + '|')
         for nrow, row in enumerate(self.board):
@@ -215,17 +221,15 @@ def read_board(csvfile):
     return rawboard
 
 
-def djikstra(a_graph, root, maxdistance=sys.maxsize):
+def djikstra(root, maxdistance=sys.maxsize):
     """
-    :param a_graph: the Graph instance
     :param root: the node to start from
     :param maxdistance: Do not search for nodes more than maxcost away.
     :return:
     """
     root.distance = 0
-    unvisited_queue = a_graph.graph[:]
-    heapq.heapify(unvisited_queue)  # The Node __lt__ method compares distances
-    while len(unvisited_queue):
+    unvisited_queue = [root]
+    while unvisited_queue:
         # Pops a vertex with the smallest distance
         current = heapq.heappop(unvisited_queue)
         current.visited = True
@@ -243,9 +247,10 @@ def djikstra(a_graph, root, maxdistance=sys.maxsize):
                 continue
             new_dist = current.distance + nextv.terrain
             nextv_dist = nextv.distance
-            if new_dist < nextv_dist:
+            if new_dist < nextv_dist and new_dist <= maxdistance:
                 nextv.distance = new_dist
                 nextv.previous = current
+                heapq.heappush(unvisited_queue, nextv)
                 updated = 'updated'  # just used for logging
             else:
                 updated = 'not updated'
@@ -254,29 +259,30 @@ def djikstra(a_graph, root, maxdistance=sys.maxsize):
                 #       % (updated, current.id, nextv.id, nextv_dist))
                 print(f'{updated}: current: {current.id}, next: {nextv.id}, '
                       f'dist: {nextv_dist}->{nextv.distance}')
-        # Rebuild heap
-        # Put all vertices not visited into the queue
-        unvisited_queue = [v for v in a_graph.graph if not v.visited]
         if _args.verbose >= 3:
             print(f'unvisited: {unvisited_queue}')
-        heapq.heapify(unvisited_queue)
-
-    for node in a_graph.graph:
-        if maxdistance < node.distance < sys.maxsize:
-            node.distance = sys.maxsize
-            # print(f'{node.row}, {node.col}')
 
 
 def main(args):
     rawboard = read_board(args.incsv)
-    # graph = create_graph(rawboard, nplayers=4)
     graph = Graph(rawboard, args.nplayers)
     rows, cols = graph.get_rows_cols()
-    if _args.verbose >= 1:
-        print(f'{rows=} {cols=}')
+    if args.verbose >= 1:
+        m = args.maxdistance
+        print(f'{rows=} {cols=}'
+              f'{" maxdistance=" + str(m) if m < sys.maxsize else ""}')
     graph.reset_totalcost()
-    djikstra(graph, graph.board[0][0], maxdistance=10)
-    if _args.verbose >= 2:
+    if args.timeit:
+        t1 = time.time()
+        for _ in range(args.timeit):
+            djikstra(graph.board[args.row][args.column],
+                     maxdistance=args.maxdistance)
+        t2 = time.time()
+        print(t2 - t1)
+    else:
+        djikstra(graph.board[args.row][args.column],
+                 maxdistance=args.maxdistance)
+    if args.verbose >= 2:
         graph.dump_board()
     # print(board)
     if args.print:
@@ -290,11 +296,24 @@ def getargs():
         ''')
     parser.add_argument('incsv', type=argparse.FileType('r'), help='''
          The file containing the board description.''')
+    parser.add_argument('-c', '--column', type=int, default=0, help='''
+    Start column.
+    ''')
+    parser.add_argument('-m', '--maxdistance', type=int, default=sys.maxsize,
+                        help='''
+    Maximum distance of interest.
+    ''')
     parser.add_argument('-n', '--nplayers', default=4, type=int, help='''
     Specify the number of players; the default is 4.
     ''')
     parser.add_argument('-p', '--print', action='store_true', help='''
     Print the finished board with distances.
+    ''')
+    parser.add_argument('-r', '--row', type=int, default=0, help='''
+    Start row.
+    ''')
+    parser.add_argument('-t', '--timeit', type=int, help='''
+    Time the djikstra function with this number of iterations.
     ''')
     parser.add_argument('-v', '--verbose', default=1, type=int, help='''
     Modify verbosity.
