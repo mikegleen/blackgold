@@ -37,7 +37,8 @@ class Node:
             # If the neighbor has wells, you aren't allowed to stop there,
             # so it can't be a goal.
             if neighbor.wells == 0:
-                neighbor.goal |= self.wells > 0
+                neighbor.goal |= self.wells > 0 and not (self.derrick or
+                                                         self.exhausted)
 
         lastrow = len(nodes) - 1
         lastcol = len(nodes[0]) - 1
@@ -82,7 +83,6 @@ class Node:
         self.adjacent = []  # a priority queue
         self.distance: int = sys.maxsize
         self.previous = None  # will be set when visited
-        self.visited = False
 
     def __str__(self):
         e = 'T' if self.exhausted else 'F'
@@ -106,6 +106,7 @@ class Node:
         s = f'{self.id}'
         return s
 
+    # Needed by heapq
     def __lt__(self, other):
         return self.distance < other.distance
 
@@ -118,8 +119,8 @@ class Graph:
     YELLOW = Fore.YELLOW
     RESET = Style.RESET_ALL
     RED = Fore.RED
-    TERRAIN_CH = ('@', GREEN + '——' + RESET, YELLOW + '~~' + RESET,
-                  RED + '^^' + RESET)
+    TERRAIN_CH = ('@', GREEN + '—  ' + RESET, GREEN + '~~ ' + RESET,
+                  GREEN + '^^^' + RESET)
 
     def __init__(self, rawboard, nplayers):
         three_players = nplayers == 3
@@ -181,9 +182,30 @@ class Graph:
             print('   ' + '|————' * self.columns + '|')
             r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
             print(f' {nrow:02}|' + '|'.join(r1) + '|')
-            r2 = [pr_wells(n) * n.wells + ' ' * (4 - n.wells) for n in row]
+            r2 = [(pr_wells(n) * n.wells) + (' ' * (3 - n.wells))
+                  + ('G' if n.goal else ' ') for n in row]
             print('   |' + '|'.join(r2) + '|')
         print('   ' + '|————' * self.columns + '|')
+
+    def print_boardw(self):
+
+        def pr_dist(node):
+            dist = node.distance
+            return f'{dist:2d}' if dist < sys.maxsize else '  '
+
+        def pr_wells(node):
+            return'D' if node.derrick else 'W'
+
+        # self.board[4][13].derrick = True  # test feature
+        print('   ' + ''.join([f'| {n:03d} ' for n in range(self.columns)]) + '|')
+        for nrow, row in enumerate(self.board):
+            print('   ' + '|—————' * self.columns + '|')
+            r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
+            print(f' {nrow:02}|' + '|'.join(r1) + '|')
+            r2 = [(pr_wells(n) * n.wells) + (' ' * (4 - n.wells))
+                  + (Graph.RED + 'G' + Graph.RESET if n.goal else ' ') for n in row]
+            print('   |' + '|'.join(r2) + '|')
+        print('   ' + '|—————' * self.columns + '|')
 
 
 def read_board(csvfile):
@@ -221,33 +243,38 @@ def read_board(csvfile):
     return rawboard
 
 
-def djikstra(root, maxdistance=sys.maxsize):
+def djikstra(root, maxcost=sys.maxsize):
     """
     :param root: the node to start from
-    :param maxdistance: Do not search for nodes more than maxcost away.
-    :return:
+    :param maxcost: Do not search for nodes more than maxcost away.
+    :return: The Node's distance field is updated in each instance in the
+             board that is reachable from the root node given the game's
+             constraints such as within the maximum distance from the root
+             where the "distance" is the sum of the costs of entering each
+             node depending on the terrain.
     """
     root.distance = 0
     unvisited_queue = [root]
+    visited = set()
     while unvisited_queue:
         # Pops a vertex with the smallest distance
         current = heapq.heappop(unvisited_queue)
-        current.visited = True
+        visited.add(current)
         if _args.verbose >= 3:
             print(f'{current=}')
-        if current.distance >= maxdistance:
+        if current.distance >= maxcost:
             if _args.verbose >= 3:
                 print(f'    stopping at distance {current.distance}.')
             continue
         for nextv in sorted(current.adjacent):
             # if visited, skip
-            if nextv.visited:
+            if nextv in visited:
                 if _args.verbose >= 3:
                     print(f'skipping {nextv=}')
                 continue
             new_dist = current.distance + nextv.terrain
             nextv_dist = nextv.distance
-            if new_dist < nextv_dist and new_dist <= maxdistance:
+            if new_dist < nextv_dist and new_dist <= maxcost:
                 nextv.distance = new_dist
                 nextv.previous = current
                 heapq.heappush(unvisited_queue, nextv)
@@ -268,25 +295,25 @@ def main(args):
     graph = Graph(rawboard, args.nplayers)
     rows, cols = graph.get_rows_cols()
     if args.verbose >= 1:
-        m = args.maxdistance
+        m = args.maxcost
         print(f'{rows=} {cols=}'
-              f'{" maxdistance=" + str(m) if m < sys.maxsize else ""}')
+              f'{" maxcost=" + str(m) if m < sys.maxsize else ""}')
     graph.reset_totalcost()
     if args.timeit:
         t1 = time.time()
         for _ in range(args.timeit):
             djikstra(graph.board[args.row][args.column],
-                     maxdistance=args.maxdistance)
+                     maxcost=args.maxcost)
         t2 = time.time()
         print(t2 - t1)
     else:
         djikstra(graph.board[args.row][args.column],
-                 maxdistance=args.maxdistance)
+                 maxcost=args.maxcost)
     if args.verbose >= 2:
         graph.dump_board()
     # print(board)
     if args.print:
-        graph.print_board()
+        graph.print_boardw()
 
 
 def getargs():
@@ -299,7 +326,7 @@ def getargs():
     parser.add_argument('-c', '--column', type=int, default=0, help='''
     Start column.
     ''')
-    parser.add_argument('-m', '--maxdistance', type=int, default=sys.maxsize,
+    parser.add_argument('-m', '--maxcost', type=int, default=sys.maxsize,
                         help='''
     Maximum distance of interest.
     ''')
