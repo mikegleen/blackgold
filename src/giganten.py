@@ -8,6 +8,11 @@ import re
 import sys
 import time
 
+LEFTWARDS_ARROW = '\u2190'
+UPWARDS_ARROW = '\u2191'
+RIGHTWARDS_ARROW = '\u2192'
+DOWNWARDS_ARROW = '\u2193'
+
 
 class Node:
     """
@@ -16,12 +21,15 @@ class Node:
     goal: True if a neighbor is an oil well; changes to False if a derrick is built
     """
 
-    def set_neighbors(self, nodes):
+    def set_neighbors(self, board):
         """
-        adjacent contains a priority queue of tuples of (terrain, row, column)
+        This is called by Graph.__init__.
+        
+        :param board: the board from a Graph instance
+        
+        adjacent contains a list of nodes next to this node.
         A node can have up to 4 adjacent, reduced if it is on an edge.
-        Although the terrain can be obtained from nodes[row, column].terrain,
-        it is included in the tuple as the priority value.
+
         :return: None. The adjacent list in all nodes are set.
         """
         def set1neighbor(nrow, ncol):
@@ -30,18 +38,16 @@ class Node:
             :param ncol: neighbor column
             :return: None; the neighbor is added to the list
             """
-            neighbor = nodes[nrow][ncol]
-            cost = neighbor.terrain
-            # heapq.heappush(self.adjacent, (cost, nrow, ncol))
-            heapq.heappush(self.adjacent, neighbor)
+            neighbor = board[nrow][ncol]
+            self.adjacent.append(neighbor)
             # If the neighbor has wells, you aren't allowed to stop there,
             # so it can't be a goal.
             if neighbor.wells == 0:
                 neighbor.goal |= self.wells > 0 and not (self.derrick or
                                                          self.exhausted)
 
-        lastrow = len(nodes) - 1
-        lastcol = len(nodes[0]) - 1
+        lastrow = len(board) - 1
+        lastcol = len(board[0]) - 1
         if self.row > 0:
             set1neighbor(self.row - 1, self.col)
         if self.col > 0:
@@ -80,7 +86,7 @@ class Node:
         self.goal: bool = False
         self.derrick: bool = False
         self.barrels = 0
-        self.adjacent = []  # a priority queue
+        self.adjacent = []  # will be populated by set_neighbors
         self.distance: int = sys.maxsize
         self.previous = None  # will be set when visited
 
@@ -151,9 +157,9 @@ class Graph:
     def get_rows_cols(self):
         return self.rows, self.columns
 
-    def reset_totalcost(self):
+    def reset_distance(self):
         for node in self.graph:
-            node.totalcost = sys.maxsize
+            node.distance = sys.maxsize
             node.visited = False
 
     def dump_board(self):
@@ -167,7 +173,7 @@ class Graph:
                     print('    printing path: ', end='')
                     node.print_path()
 
-    def print_board(self):
+    def print_board_narrow(self):
 
         def pr_dist(node):
             dist = node.distance
@@ -187,7 +193,7 @@ class Graph:
             print('   |' + '|'.join(r2) + '|')
         print('   ' + '|————' * self.columns + '|')
 
-    def print_boardw(self):
+    def print_board(self):
 
         def pr_dist(node):
             dist = node.distance
@@ -196,13 +202,24 @@ class Graph:
         def pr_wells(node):
             return'D' if node.derrick else 'W'
 
+        def from_arrow(node):
+            if not (previous := node.previous):
+                return ' '
+            if node.row == previous.row:
+                return (LEFTWARDS_ARROW if node.col > previous.col else
+                        RIGHTWARDS_ARROW)
+            else:
+                return (UPWARDS_ARROW if node.row > previous.row else
+                        DOWNWARDS_ARROW)
+
         # self.board[4][13].derrick = True  # test feature
         print('   ' + ''.join([f'| {n:03d} ' for n in range(self.columns)]) + '|')
         for nrow, row in enumerate(self.board):
             print('   ' + '|—————' * self.columns + '|')
             r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
             print(f' {nrow:02}|' + '|'.join(r1) + '|')
-            r2 = [(pr_wells(n) * n.wells) + (' ' * (4 - n.wells))
+            r2 = [(pr_wells(n) * n.wells) + (' ' * (3 - n.wells))
+                  + from_arrow(n)
                   + (Graph.RED + 'G' + Graph.RESET if n.goal else ' ') for n in row]
             print('   |' + '|'.join(r2) + '|')
         print('   ' + '|—————' * self.columns + '|')
@@ -227,25 +244,27 @@ def read_board(csvfile):
              Each cell is the string as defined above.
     """
     r = []  # rows
-    ncols = 0
+    nrows = 0
     for nline, line in enumerate(csvfile):
-        c = line.split()
-        if ncols == 0:
-            ncols = len(c)
-        if len(c) != ncols:
-            raise ValueError(f"Length of line {nline + 1} is {len(c)}, {ncols} expected.")
+        c = line.split()  # one column
+        if nrows == 0:
+            nrows = len(c)
+        if len(c) != nrows:
+            raise ValueError(f"Length of line {nline + 1} is "
+                             f"{len(c)}, {nrows} expected.")
         r.append(c)
     # board = list(map(list, zip(*board)))  # create list of lists, not tuples
-    # Invert the array giving a list of tuples corresponding to the columns.
+    # Invert the array giving a list of tuples where each tuple is one row.
     rawboard = list(zip(*r))
     if _args.verbose >= 2:
         print('rawboard:', rawboard)
     return rawboard
 
 
-def djikstra(root, maxcost=sys.maxsize):
+def djikstra(root: Node, maxcost=sys.maxsize):
     """
-    :param root: the node to start from
+    :param root: the Node to start from. The Nodes have been initialized
+             during the creation of the Graph instance.
     :param maxcost: Do not search for nodes more than maxcost away.
     :return: The Node's distance field is updated in each instance in the
              board that is reachable from the root node given the game's
@@ -267,8 +286,7 @@ def djikstra(root, maxcost=sys.maxsize):
                 print(f'    stopping at distance {current.distance}.')
             continue
         for nextv in sorted(current.adjacent):
-            # if visited, skip
-            if nextv in visited:
+            if nextv in visited:  # if visited, skip
                 if _args.verbose >= 3:
                     print(f'skipping {nextv=}')
                 continue
@@ -293,27 +311,28 @@ def djikstra(root, maxcost=sys.maxsize):
 def main(args):
     rawboard = read_board(args.incsv)
     graph = Graph(rawboard, args.nplayers)
-    rows, cols = graph.get_rows_cols()
+    nrows, ncols = graph.get_rows_cols()
     if args.verbose >= 1:
         m = args.maxcost
-        print(f'{rows=} {cols=}'
+        print(f'{nrows=} {ncols=}'
               f'{" maxcost=" + str(m) if m < sys.maxsize else ""}')
-    graph.reset_totalcost()
     if args.timeit:
         t1 = time.time()
         for _ in range(args.timeit):
+            graph.reset_distance()
             djikstra(graph.board[args.row][args.column],
                      maxcost=args.maxcost)
         t2 = time.time()
         print(t2 - t1)
     else:
+        graph.reset_distance()
         djikstra(graph.board[args.row][args.column],
                  maxcost=args.maxcost)
     if args.verbose >= 2:
         graph.dump_board()
     # print(board)
     if args.print:
-        graph.print_boardw()
+        graph.print_board()
 
 
 def getargs():
