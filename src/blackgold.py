@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 
 import numpy as np
-from excel_cols import col2num
+from excel_cols import col2num  # in ~/pyprj/misc
 
 testwells = '2b 2e 5d 6b 6f'
 testrough = '2d 3f 4c 5a 5f'
