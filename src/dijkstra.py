@@ -81,7 +81,7 @@ def main():
     print("=== Dijkstra ===")
     print('edges=', edges)
     print("A -> E:")
-    print('result:', pp := dijkstra(edges, "A", "E", two_way=False))
+    print('result:', pp := dijkstra(edges, "A", "G", two_way=False))
     print('unwound:', unwindpath(pp))
     # print("F -> G:")
     # print('result:',dijkstra(edges, "F", "G"))
