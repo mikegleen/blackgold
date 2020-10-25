@@ -14,6 +14,10 @@ RIGHTWARDS_ARROW = '\u2192'
 DOWNWARDS_ARROW = '\u2193'
 
 
+def idist(distance):
+    return "∞" if distance == sys.maxsize else distance
+
+
 class Node:
     """
     cost: Number of movement points it costs to enter this node.
@@ -60,7 +64,8 @@ class Node:
     def add_derrick(self):
         # Make the adjacent not to be goals.
         # Make this node impassable
-        pass
+        assert self.derrick is False
+        self.derrick = True
 
     def remove_derrick(self):
         # Make this node passable
@@ -246,7 +251,8 @@ def read_board(csvfile):
     r = []  # rows
     nrows = 0
     for nline, line in enumerate(csvfile):
-        c = line.split()  # one column
+        if len(c := line.split()) == 0:  # one column
+            continue
         if nrows == 0:
             nrows = len(c)
         if len(c) != nrows:
@@ -261,7 +267,7 @@ def read_board(csvfile):
     return rawboard
 
 
-def djikstra(root: Node, maxcost=sys.maxsize):
+def dijkstra(root: Node, maxcost=sys.maxsize):
     """
     :param root: the Node to start from. The Nodes have been initialized
              during the creation of the Graph instance.
@@ -285,25 +291,36 @@ def djikstra(root: Node, maxcost=sys.maxsize):
             if _args.verbose >= 3:
                 print(f'    stopping at distance {current.distance}.')
             continue
-        for nextv in sorted(current.adjacent):
-            if nextv in visited:  # if visited, skip
+        for nextn in sorted(current.adjacent):  # iterate over adjacent nodes
+            if nextn in visited:  # if visited, skip
                 if _args.verbose >= 3:
-                    print(f'skipping {nextv=}')
+                    print(f'skipping, visited: {nextn=}')
                 continue
-            new_dist = current.distance + nextv.terrain
-            nextv_dist = nextv.distance
-            if new_dist < nextv_dist and new_dist <= maxcost:
-                nextv.distance = new_dist
-                nextv.previous = current
-                heapq.heappush(unvisited_queue, nextv)
+            if nextn.derrick:
+                if _args.verbose >= 3:
+                    print(f'skipping, derrick: {nextn=}')
+                continue
+            new_dist = current.distance + nextn.terrain
+            nextn_dist = nextn.distance
+            #
+            # If the next node has wells and is not exhausted, the player
+            # may not stop there.
+            if nextn.wells and not nextn.exhausted and new_dist >= maxcost:
+                if _args.verbose >= 3:
+                    print(f'skipping, wells: {nextn=}')
+                continue
+            if new_dist < nextn_dist and new_dist <= maxcost:
+                nextn.distance = new_dist
+                nextn.previous = current
+                heapq.heappush(unvisited_queue, nextn)
                 updated = 'updated'  # just used for logging
             else:
                 updated = 'not updated'
             if _args.verbose >= 3:
                 # print('%s : current = %s next = %s new_dist = %s'
-                #       % (updated, current.id, nextv.id, nextv_dist))
-                print(f'{updated}: current: {current.id}, next: {nextv.id}, '
-                      f'dist: {nextv_dist}->{nextv.distance}')
+                #       % (updated, current.id, nextn.id, nextn_dist))
+                print(f'{updated}: current: {current.id}, next: {nextn.id}, '
+                      f'dist: {idist(nextn_dist)} -> {nextn.distance}')
         if _args.verbose >= 3:
             print(f'unvisited: {unvisited_queue}')
 
@@ -311,6 +328,8 @@ def djikstra(root: Node, maxcost=sys.maxsize):
 def main(args):
     rawboard = read_board(args.incsv)
     graph = Graph(rawboard, args.nplayers)
+    if args.verbose >= 3:
+        graph.dump_board()
     nrows, ncols = graph.get_rows_cols()
     if args.verbose >= 1:
         m = args.maxcost
@@ -320,13 +339,13 @@ def main(args):
         t1 = time.time()
         for _ in range(args.timeit):
             graph.reset_distance()
-            djikstra(graph.board[args.row][args.column],
+            dijkstra(graph.board[args.row][args.column],
                      maxcost=args.maxcost)
         t2 = time.time()
         print(t2 - t1)
     else:
         graph.reset_distance()
-        djikstra(graph.board[args.row][args.column],
+        dijkstra(graph.board[args.row][args.column],
                  maxcost=args.maxcost)
     if args.verbose >= 2:
         graph.dump_board()
@@ -359,7 +378,7 @@ def getargs():
     Start row.
     ''')
     parser.add_argument('-t', '--timeit', type=int, help='''
-    Time the djikstra function with this number of iterations.
+    Time the dijkstra function with this number of iterations.
     ''')
     parser.add_argument('-v', '--verbose', default=1, type=int, help='''
     Modify verbosity.
