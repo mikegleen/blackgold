@@ -2,8 +2,10 @@
 
 """
 import argparse
+import copy
 from colorama import Fore, Style
 import heapq
+import random
 import re
 import sys
 import time
@@ -85,16 +87,19 @@ class Node:
         path.reverse()
         print('   ', path)
 
-    def __init__(self, row, col, derrick=False):
+    def __init__(self, row: int, col: int, derrick=False):
         self.row: int = row
         self.col: int = col
         self.id: str = f'[{row},{col}]'
         self.terrain: int = 0
         self.wells: int = 0
+        # oil_reserve: the number on the bottom side of the tile covering a
+        # square with well(s) or the number of plastic markers under a derrick
+        self.oil_reserve: int = 0
         self.exhausted: bool = False
         self.goal: int = 0  # count of adjacent nodes with unbuilt wells
         self.derrick: bool = derrick
-        self.barrels = 0
+        self.truck = None  # set when a truck moves to this node
         self.adjacent = []  # will be populated by set_neighbors
         self.distance: int = sys.maxsize
         self.previous = None  # will be set when visited
@@ -103,6 +108,7 @@ class Node:
     def __str__(self):
         e = 'T' if self.exhausted else 'F'
         g = self.goal
+        t = self.truck
         d = 'T' if self.derrick else 'F'
         # s = f'node[{self.row},{self.col}] terrain: {self.terrain}, '
         # s += f'wells: {self.wells} '
@@ -112,7 +118,7 @@ class Node:
 
         s = f'{self.id} t: {self.terrain}, '
         s += f'w: {self.wells} '
-        s += f'ex: {e}, goal: {g}, derrick: {d}, '
+        s += f'ex: {e}, goal: {g}, derrick: {d}, truck: {t}'
         s += f'previous={repr(self.previous)}, '
         s += f'dist: {"∞" if self.distance == sys.maxsize else self.distance}, '
         s += f'adjacent: {sorted(self.adjacent)}'
@@ -133,15 +139,29 @@ class Graph:
     # for print_board: 0->illegal 1->flat 2->hilly 3->mountain
     GREEN = Fore.GREEN
     YELLOW = Fore.YELLOW
-    RESET = Style.RESET_ALL
     RED = Fore.RED
+    RESET = Style.RESET_ALL
     TERRAIN_CH = ('@', GREEN + '—  ' + RESET, GREEN + '~~ ' + RESET,
                   GREEN + '^^^' + RESET)
+    # TILES: This dict defines the cardboard pieces that cover the squares
+    #        containing wells.
+    #        The key is the number of oil wells, the value is a list of the
+    #        number of oil markers to be allocated when a derrick is built.
+    #        This list will be copied, shuffled and allocated to the nodes
+    #        according to the number of wells on that node.
+    TILES = {
+        1: [2] * 4 + [3] * 4 + [4] * 4,
+        2: [2] * 6 + [5] * 6,
+        3: [4] * 4 + [5] * 4 + [6] * 4
+    }
 
     def __init__(self, rawboard, nplayers):
         three_players = nplayers == 3
         nrows = len(rawboard)
         ncols = len(rawboard[0])
+        tiles = copy.deepcopy(Graph.TILES)
+        for k in (1, 2, 3):
+            random.shuffle(tiles[k])
         board = [[Node(r, c) for c in range(ncols)] for r in range(nrows)]
         # nodes = np.array(nodes)
         for r, row in enumerate(board):
@@ -157,6 +177,10 @@ class Graph:
                 if m.group(3):  # if wells are specified
                     node.wells = 0 if (m.group(4) == 'x' and three_players
                                        ) else int(m.group(3))
+                    # Select a random tile from the shuffled list according
+                    # to the number of wells. Indicate that this is the amount
+                    # of oil underground.
+                    node.oil_reserve = tiles[node.wells].pop()
                 # For testing, force a derrick
                 # print(node)
                 # print(f'{m.group(4)=}')
@@ -204,7 +228,6 @@ class Graph:
             for col in range(self.columns):
                 node = self.board[row][col]
                 cell = node.cell
-                # r += ' ' * (5 - len(cell)) + cell
                 r += f'{cell:>5}'
             print(r, file=outfile)
 
@@ -264,17 +287,18 @@ def read_board(csvfile):
     """
     Each line in the csv file describes one row or one column of the board,
     depending on argument --bycols.
+    Lines beginning with '#' and blank lines are ignored.
     Each cell contains:
 
         <cell> ::= <terrain> | <terrain> "." <oilwell> | "." <oilwell>
         <terrain> ::= 1 | 2 | 3
-        <oilwell> ::= <wellcount> | <wellcount> <marker>
+        <oilwell> ::= <wellcount> | <wellcount> <variant>
         <wellcount> ::= 1 | 2 | 3
-        <marker> = "x" | "d"
+        <variant> = "x" | "d"
 
     If <terrain> is absent, "1" is assumed.
-    If <marker> == "x" then this is a cell ignored for 3-person games.
-    If <marker> == "d" then this cell contains a derrick (used for testing).
+    If <variant> == "x" then this is a cell ignored for 3-person games.
+    If <variant> == "d" then this cell contains a derrick (used for testing).
 
     :param csvfile: The file containing the board as described above.
     :return: A list of rows containing tuples corresponding to the columns.
@@ -283,6 +307,8 @@ def read_board(csvfile):
     r = []  # rows
     nrows = 0
     for nline, line in enumerate(csvfile):
+        if line.startswith('#'):
+            continue
         if len(c := line.split()) == 0:  # one column
             continue
         if nrows == 0:
@@ -316,10 +342,13 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
     root.distance = 0
     unvisited_queue = [root]
     visited = set()
+    goals = set()
     while unvisited_queue:
         # Pops a vertex with the smallest distance
         current = heapq.heappop(unvisited_queue)
         visited.add(current)
+        if current.goal:
+            goals.add(current)
         if verbose >= 3:
             print(f'{current=} {current.adjacent=}')
         if current.distance >= maxcost:
@@ -360,6 +389,7 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
                       f'dist: {idist(nextn_dist)} -> {nextn.distance}')
         if verbose >= 3:
             print(f'unvisited: {unvisited_queue}')
+    return goals
 
 
 def main(args):
