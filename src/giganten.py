@@ -4,6 +4,7 @@
 import argparse
 import copy
 from colorama import Fore, Style
+from enum import Enum
 import heapq
 import random
 import re
@@ -16,8 +17,39 @@ RIGHTWARDS_ARROW = '\u2192'
 DOWNWARDS_ARROW = '\u2193'
 
 
-def idist(distance):
-    return "∞" if distance == sys.maxsize else distance
+def trace(level, template, *args):
+    if _args.verbose >= level:
+        print(template.format(*args))
+
+
+class Players(Enum):
+    RED = '-R-'
+    TAN = '-T-'
+    BLUE = '-B-'
+    ORANGE = '-O-'
+
+
+class Game:
+    players = list()
+
+
+class Player:
+
+    @classmethod
+    def set_players(cls, nplayers):
+        iplayers = iter(Players)
+        for n in range(nplayers):
+            Game.players.append(next(iplayers))
+
+    def __init__(self, player):
+        self.player = player  # am enum member
+        self.truck = None
+        self.train = None
+        self.oilrigs = 5
+        self.rigs_in_use = []
+        self.cash = 15_000
+        self.barrels = 0
+
 
 
 class Node:
@@ -48,8 +80,8 @@ class Node:
             self.adjacent.append(neighbor)
             # If the neighbor has wells, you aren't allowed to stop there,
             # so it can't be a goal.
-            if neighbor.wells == 0:
-                if self.wells and not (self.derrick or self.exhausted):
+            if self.wells and not self.derrick:
+                if neighbor.wells == 0:
                     neighbor.goal += 1
 
         lastrow = len(board) - 1
@@ -69,13 +101,15 @@ class Node:
         assert self.derrick is False
         self.derrick = True
         for node in self.adjacent:
-            assert node.goal > 1  # assume no adjacent cells with wells
+            assert node.goal > 0  # assume no adjacent cells with wells
             node.goal -= 1
 
     def remove_derrick(self):
         # Make this node passable
         assert self.derrick is True
         self.derrick = False
+        self.exhausted = True
+        self.wells = 0
 
     def print_path(self):
         nextprev = self.previous
@@ -339,6 +373,10 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
              where the "distance" is the sum of the costs of entering each
              node depending on the terrain.
     """
+
+    def idist(distance):
+        return "∞" if distance == sys.maxsize else distance
+
     root.distance = 0
     unvisited_queue = [root]
     visited = set()
@@ -349,31 +387,24 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
         visited.add(current)
         if current.goal:
             goals.add(current)
-        if verbose >= 3:
-            print(f'{current=} {current.adjacent=}')
+        trace(3, 'current={} current.adjacent={}', current, current.adjacent)
         if current.distance >= maxcost:
-            if verbose >= 3:
-                print(f'    stopping at distance {current.distance}.')
+            trace(3, '    stopping at distance {}.', current.distance)
             continue
         for nextn in sorted(current.adjacent):  # iterate over adjacent nodes
-            if verbose >= 3:
-                print(f'{nextn=} {"DERRICK" if nextn.derrick else ""}')
+            trace(3, 'nextn={} {}', nextn, "DERRICK" if nextn.derrick else "")
             if nextn in visited:  # if visited, skip
-                if verbose >= 3:
-                    print(f'skipping, visited: {nextn=}')
+                trace(3, 'skipping, visited: nextn={}', nextn)
                 continue
             if nextn.derrick:
-                if verbose >= 3:
-                    print(f'skipping, derrick: {nextn=}')
+                trace(3, 'skipping, derrick: nextn={}', nextn)
                 continue
             new_dist = current.distance + nextn.terrain
             nextn_dist = nextn.distance
             #
-            # If the next node has wells and is not exhausted, the player
-            # may not stop there.
-            if nextn.wells and not nextn.exhausted and new_dist >= maxcost:
-                if verbose >= 3:
-                    print(f'skipping, wells: {nextn=}')
+            # If the next node has wells, the player may not stop there.
+            if nextn.wells and new_dist >= maxcost:
+                trace(3, 'skipping, wells: nextn={}', nextn)
                 continue
             if new_dist < nextn_dist and new_dist <= maxcost:
                 nextn.distance = new_dist
@@ -387,8 +418,8 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
                 #       % (updated, current.id, nextn.id, nextn_dist))
                 print(f'{updated}: current: {current.id}, next: {nextn.id}, '
                       f'dist: {idist(nextn_dist)} -> {nextn.distance}')
-        if verbose >= 3:
-            print(f'unvisited: {unvisited_queue}')
+        trace(3, 'unvisited: {}', unvisited_queue)
+    goals = sorted(list(goals), key=lambda node: node.col, reverse=True)
     return goals
 
 
@@ -414,8 +445,9 @@ def main(args):
         print(t2 - t1)
     else:
         graph.reset_distance()
-        dijkstra(graph.board[args.row][args.column],
-                 maxcost=args.maxcost, verbose=_args.verbose)
+        goals = dijkstra(graph.board[args.row][args.column],
+                         maxcost=args.maxcost, verbose=_args.verbose)
+        print(f'{goals=}')
     if args.verbose >= 2:
         graph.dump_board()
     # print(board)
