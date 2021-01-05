@@ -2,19 +2,13 @@
 
 """
 import argparse
-import copy
-from colorama import Fore, Style
 from enum import Enum
 import heapq
-import random
-import re
 import sys
 import time
 
-LEFTWARDS_ARROW = '\u2190'
-UPWARDS_ARROW = '\u2191'
-RIGHTWARDS_ARROW = '\u2192'
-DOWNWARDS_ARROW = '\u2193'
+from .node import Node
+from .graph import Graph
 
 
 def trace(level, template, *args):
@@ -22,299 +16,40 @@ def trace(level, template, *args):
         print(template.format(*args))
 
 
-class Players(Enum):
+class PlayerIDs(Enum):
     RED = '-R-'
     TAN = '-T-'
     BLUE = '-B-'
     ORANGE = '-O-'
 
 
+# hardcode the rows in the first column to place the trucks
+TRUCK_INIT_ROWS = [1, 5, 7, 9]
+
+
 class Game:
-    players = list()
+
+    def __init__(self, graph, nplayers):
+        lp = list(PlayerIDs)
+        self.players = []
+        assert nplayers <= len(lp)
+        for n in range(nplayers):
+            node: Node = graph.board[TRUCK_INIT_ROWS[n]][0]
+            player = Player(lp[n], node)
+            node.truck = player
+            self.players.append(player)
 
 
 class Player:
 
-    @classmethod
-    def set_players(cls, nplayers):
-        iplayers = iter(Players)
-        for n in range(nplayers):
-            Game.players.append(next(iplayers))
-
-    def __init__(self, player):
-        self.player = player  # am enum member
-        self.truck = None
-        self.train = None
-        self.oilrigs = 5
+    def __init__(self, playerid, truck_node: Node):
+        self.id = playerid  # am enum member
+        self.truck_node = truck_node
+        self.train_col = None
+        self.oilrigs = 0
         self.rigs_in_use = []
         self.cash = 15_000
         self.barrels = 0
-
-
-
-class Node:
-    """
-    cost: Number of movement points it costs to enter this node.
-    exhausted: True if a derrick has been built and all of the oil has been extracted.
-    goal: Number of adjacent cells with wells. Decremented if a derrick is built
-    """
-
-    def set_neighbors(self, board):
-        """
-        This is called by Graph.__init__.
-        
-        :param board: the board from a Graph instance
-        
-        adjacent contains a list of nodes next to this node.
-        A node can have up to 4 adjacent, reduced if it is on an edge.
-
-        :return: None. The adjacent list in all nodes are set.
-        """
-        def set1neighbor(nrow, ncol):
-            """
-            :param nrow: neighbor row
-            :param ncol: neighbor column
-            :return: None; the neighbor is added to the list
-            """
-            neighbor = board[nrow][ncol]
-            self.adjacent.append(neighbor)
-            # If the neighbor has wells, you aren't allowed to stop there,
-            # so it can't be a goal.
-            if self.wells and not self.derrick:
-                if neighbor.wells == 0:
-                    neighbor.goal += 1
-
-        lastrow = len(board) - 1
-        lastcol = len(board[0]) - 1
-        if self.row > 0:
-            set1neighbor(self.row - 1, self.col)
-        if self.col > 0:
-            set1neighbor(self.row, self.col - 1)
-        if self.row < lastrow:
-            set1neighbor(self.row + 1, self.col)
-        if self.col < lastcol:
-            set1neighbor(self.row, self.col + 1)
-
-    def add_derrick(self):
-        # Make the adjacent not to be goals.
-        # Make this node impassable
-        assert self.derrick is False
-        self.derrick = True
-        for node in self.adjacent:
-            assert node.goal > 0  # assume no adjacent cells with wells
-            node.goal -= 1
-
-    def remove_derrick(self):
-        # Make this node passable
-        assert self.derrick is True
-        self.derrick = False
-        self.exhausted = True
-        self.wells = 0
-
-    def print_path(self):
-        nextprev = self.previous
-        path = []
-        while nextprev:
-            # print(f'nextprev: {nextprev}')
-            path.append(nextprev)
-            nextprev = nextprev.previous
-        path.reverse()
-        print('   ', path)
-
-    def __init__(self, row: int, col: int, derrick=False):
-        self.row: int = row
-        self.col: int = col
-        self.id: str = f'[{row},{col}]'
-        self.terrain: int = 0
-        self.wells: int = 0
-        # oil_reserve: the number on the bottom side of the tile covering a
-        # square with well(s) or the number of plastic markers under a derrick
-        self.oil_reserve: int = 0
-        self.exhausted: bool = False
-        self.goal: int = 0  # count of adjacent nodes with unbuilt wells
-        self.derrick: bool = derrick
-        self.truck = None  # set when a truck moves to this node
-        self.adjacent = []  # will be populated by set_neighbors
-        self.distance: int = sys.maxsize
-        self.previous = None  # will be set when visited
-        self.cell = None  # this node's string from rawboard
-
-    def __str__(self):
-        e = 'T' if self.exhausted else 'F'
-        g = self.goal
-        t = self.truck
-        d = 'T' if self.derrick else 'F'
-        # s = f'node[{self.row},{self.col}] terrain: {self.terrain}, '
-        # s += f'wells: {self.wells} '
-        # s += f'exhausted: {e}, goal: {g}, derrick: {d}, '
-        # s += f'totcost: {"∞" if self.distance == sys.maxsize else self.distance}, '
-        # s += f'adjacent: {sorted(self.adjacent)}'
-
-        s = f'{self.id} t: {self.terrain}, '
-        s += f'w: {self.wells} '
-        s += f'ex: {e}, goal: {g}, derrick: {d}, truck: {t}'
-        s += f'previous={repr(self.previous)}, '
-        s += f'dist: {"∞" if self.distance == sys.maxsize else self.distance}, '
-        s += f'adjacent: {sorted(self.adjacent)}'
-        return s
-
-    def __repr__(self):
-        s = f'{self.id}'
-        return s
-
-    # Needed by heapq
-    def __lt__(self, other):
-        return self.distance < other.distance
-
-
-class Graph:
-    # board will hold the numpy array[rows, cols] of Node instances
-
-    # for print_board: 0->illegal 1->flat 2->hilly 3->mountain
-    GREEN = Fore.GREEN
-    YELLOW = Fore.YELLOW
-    RED = Fore.RED
-    RESET = Style.RESET_ALL
-    TERRAIN_CH = ('@', GREEN + '—  ' + RESET, GREEN + '~~ ' + RESET,
-                  GREEN + '^^^' + RESET)
-    # TILES: This dict defines the cardboard pieces that cover the squares
-    #        containing wells.
-    #        The key is the number of oil wells, the value is a list of the
-    #        number of oil markers to be allocated when a derrick is built.
-    #        This list will be copied, shuffled and allocated to the nodes
-    #        according to the number of wells on that node.
-    TILES = {
-        1: [2] * 4 + [3] * 4 + [4] * 4,
-        2: [2] * 6 + [5] * 6,
-        3: [4] * 4 + [5] * 4 + [6] * 4
-    }
-
-    def __init__(self, rawboard, nplayers):
-        three_players = nplayers == 3
-        nrows = len(rawboard)
-        ncols = len(rawboard[0])
-        tiles = copy.deepcopy(Graph.TILES)
-        for k in (1, 2, 3):
-            random.shuffle(tiles[k])
-        board = [[Node(r, c) for c in range(ncols)] for r in range(nrows)]
-        # nodes = np.array(nodes)
-        for r, row in enumerate(board):
-            for c, node in enumerate(row):
-                # See read_board() for a description of the pattern
-                m = re.match(r'(\d?)(\.(\d?)([xd]?))?', cell := rawboard[r][c])
-                node.cell = cell
-                # print(f'{r=} {c=} {m.group(1,2,3,4)=}')
-                if m is None:
-                    raise ValueError(
-                        f"In row {r}, col {c}, '{cell}' failed match.")
-                node.terrain = 1 if m.group(1) == '' else int(m.group(1))
-                if m.group(3):  # if wells are specified
-                    node.wells = 0 if (m.group(4) == 'x' and three_players
-                                       ) else int(m.group(3))
-                    # Select a random tile from the shuffled list according
-                    # to the number of wells. Indicate that this is the amount
-                    # of oil underground.
-                    node.oil_reserve = tiles[node.wells].pop()
-                # For testing, force a derrick
-                # print(node)
-                # print(f'{m.group(4)=}')
-                if m.group(4) == 'd':
-                    node.derrick = True
-        self.board = board
-        self.rows = nrows
-        self.columns = ncols
-        # Make a 1d view of the 2d board
-        self.graph = [node for row in board for node in row]
-        # print(self.graph)
-        for node in self.graph:
-            node.set_neighbors(board)
-
-    def get_rows_cols(self):
-        return self.rows, self.columns
-
-    def reset_distance(self):
-        for node in self.graph:
-            node.distance = sys.maxsize
-            node.visited = False
-
-    def dump_board(self):
-        print('Dump Board')
-        for row in range(self.rows):
-            for col in range(self.columns):
-                node = self.board[row][col]
-                print('printing node: ', end='')
-                print(node)
-                if node.previous:
-                    print('    printing path: ', end='')
-                    node.print_path()
-
-    def dump_raw_board(self):
-        """
-            This is a little utility method to create a file readable as an
-            input board CSV file. This is useful if the original CSV file was
-            created manually by columns but we want to proceed with the
-            file as rows as this is more understandable.
-        """
-        outfilename = _args.dumprawboard
-        outfile = open(outfilename, 'w')
-        for row in range(self.rows):
-            r = ''
-            for col in range(self.columns):
-                node = self.board[row][col]
-                cell = node.cell
-                r += f'{cell:>5}'
-            print(r, file=outfile)
-
-    def print_board_narrow(self):
-
-        def pr_dist(node):
-            dist = node.distance
-            return f'{dist:2d}' if dist < sys.maxsize else '  '
-
-        def pr_wells(node):
-            return'D' if node.derrick else 'W'
-
-        # self.board[4][13].derrick = True  # test feature
-        print('   ' + ''.join([f'| {n:02} ' for n in range(self.columns)]) + '|')
-        for nrow, row in enumerate(self.board):
-            print('   ' + '|————' * self.columns + '|')
-            r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
-            print(f' {nrow:02}|' + '|'.join(r1) + '|')
-            r2 = [(pr_wells(n) * n.wells) + (' ' * (3 - n.wells))
-                  + (n.goal if n.goal else ' ') for n in row]
-            print('   |' + '|'.join(r2) + '|')
-        print('   ' + '|————' * self.columns + '|')
-
-    def print_board(self):
-
-        def pr_dist(node):
-            dist = node.distance
-            return f'{dist:2d}' if dist < sys.maxsize else '  '
-
-        def pr_wells(node):
-            return 'D' if node.derrick else 'w'
-
-        def from_arrow(node):
-            if not (previous := node.previous):
-                return ' '
-            if node.row == previous.row:
-                return (LEFTWARDS_ARROW if node.col > previous.col else
-                        RIGHTWARDS_ARROW)
-            else:
-                return (UPWARDS_ARROW if node.row > previous.row else
-                        DOWNWARDS_ARROW)
-
-        print('   ' + ''.join([f'| {n:03d} ' for n in range(self.columns)]) + '|')
-        for nrow, row in enumerate(self.board):
-            print('   ' + '|—————' * self.columns + '|')
-            r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
-            print(f' {nrow:02}|' + '|'.join(r1) + '|')
-            r2 = [(pr_wells(n) * n.wells) + (' ' * (3 - n.wells))
-                  + from_arrow(n)
-                  + (Graph.RED + str(n.goal) + Graph.RESET if n.goal else ' ')
-                  for n in row]
-            print('   |' + '|'.join(r2) + '|')
-        print('   ' + '|—————' * self.columns + '|')
 
 
 def read_board(csvfile):
@@ -426,8 +161,7 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
 def main(args):
     rawboard = read_board(args.incsv)
     graph = Graph(rawboard, args.nplayers)
-    if args.dumprawboard:
-        graph.dump_raw_board()
+    graph.dump_raw_board(args.dumprawboard)
     if args.verbose >= 3:
         graph.dump_board()
     nrows, ncols = graph.get_rows_cols()
