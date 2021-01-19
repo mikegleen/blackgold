@@ -7,7 +7,8 @@ import random
 import re
 import sys
 
-from .node import Node
+from node import Node
+import config
 
 LEFTWARDS_ARROW = '\u2190'
 UPWARDS_ARROW = '\u2191'
@@ -25,23 +26,12 @@ class Graph:
     RESET = Style.RESET_ALL
     TERRAIN_CH = ('@', GREEN + '—  ' + RESET, GREEN + '~~ ' + RESET,
                   GREEN + '^^^' + RESET)
-    # TILES: This dict defines the cardboard pieces that cover the squares
-    #        containing wells.
-    #        The key is the number of oil wells, the value is a list of the
-    #        number of oil markers to be allocated when a derrick is built.
-    #        This list will be copied, shuffled and allocated to the nodes
-    #        according to the number of wells on that node.
-    TILES = {
-        1: [2] * 4 + [3] * 4 + [4] * 4,
-        2: [2] * 6 + [5] * 6,
-        3: [4] * 4 + [5] * 4 + [6] * 4
-    }
 
     def __init__(self, rawboard, nplayers):
         three_players = nplayers == 3
         nrows = len(rawboard)
         ncols = len(rawboard[0])
-        tiles = copy.deepcopy(Graph.TILES)
+        tiles = copy.deepcopy(config.TILES)
         for k in (1, 2, 3):
             random.shuffle(tiles[k])
         board = [[Node(r, c) for c in range(ncols)] for r in range(nrows)]
@@ -49,7 +39,8 @@ class Graph:
         for r, row in enumerate(board):
             for c, node in enumerate(row):
                 # See read_board() for a description of the pattern
-                m = re.match(r'(\d?)(\.(\d?)([xd]?))?', cell := rawboard[r][c])
+                m = re.match(r'(\d?)(\.(\d?)([xd]?))?',
+                             (cell := rawboard[r][c]).lower())
                 node.cell = cell
                 # print(f'{r=} {c=} {m.group(1,2,3,4)=}')
                 if m is None:

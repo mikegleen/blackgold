@@ -15,6 +15,7 @@ Rule 2 changes the rule so that the die color always controls whether the price
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import random
 
 debug = False
 maxblue = 9000.
@@ -65,10 +66,9 @@ def next_price_2(oldprice, throw):
     return newprice
 
 
-def testnext():
-    for price in range(1500, 9001, 500):
-        for ix in range(6):
-            next_price_1(price, ix)
+def next_price(oldprice):
+    ix = random.randint(0, 5)
+    return next_price_1(oldprice, ix)
 
 
 def game(moves):
@@ -76,7 +76,7 @@ def game(moves):
     prices1 = np.zeros(moves)
     prices2 = np.zeros(moves)
     for t in range(moves):
-        ix = np.random.randint(6)
+        ix = random.randint(0, 5)
         price1 = next_price_1(price1, ix)
         prices1[t] = price1
         count1[price1] += 1

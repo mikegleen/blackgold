@@ -22,7 +22,10 @@ How much it costs to move a player's train one column.
 BLACK_TRAIN_COSTS = [0] + [1] * 9 + [2] * 7 + [3] * 3
 
 INITIAL_CASH = 15_000
+INITIAL_PRICE = 5000
 INITIAL_OIL_RIGS = 5
+# the rows in the first column to place the trucks at the start of the game
+TRUCK_INIT_ROWS = [1, 5, 7, 9]
 
 """
     Define the contents of the card decks.

@@ -3,7 +3,7 @@
 """
 import sys
 from typing import Union
-from .giganten import Player
+import player
 
 
 class Node:
@@ -79,7 +79,7 @@ class Node:
     def __init__(self, row: int, col: int, derrick=False):
         self.row: int = row
         self.col: int = col
-        self.id: str = f'[{row},{col}]'
+        self.id: str = f'<{row},{col}>'
         self.terrain: int = 0
         self.wells: int = 0
         # oil_reserve: the number on the bottom side of the tile covering a
@@ -88,11 +88,13 @@ class Node:
         self.exhausted: bool = False
         self.goal: int = 0  # count of adjacent nodes with unbuilt wells
         self.derrick: bool = derrick
-        self.truck: Union[Player, None] = None  # set when a truck moves to this node
+        self.truck: Union[player.Player, None] = None  # set when a truck moves to this node
         self.adjacent = []  # will be populated by set_neighbors
+        self.cell = None  # this node's string from rawboard
+
+        # Fields set by dijkstra
         self.distance: int = sys.maxsize
         self.previous = None  # will be set when visited
-        self.cell = None  # this node's string from rawboard
 
     def __str__(self):
         e = 'T' if self.exhausted else 'F'
@@ -107,7 +109,7 @@ class Node:
 
         s = f'{self.id} t: {self.terrain}, '
         s += f'w: {self.wells} '
-        s += f'ex: {e}, goal: {g}, derrick: {d}, truck: {t}'
+        s += f'ex={e}, goal={g}, derrick={d}, truck={t}, '
         s += f'previous={repr(self.previous)}, '
         s += f'dist: {"∞" if self.distance == sys.maxsize else self.distance}, '
         s += f'adjacent: {sorted(self.adjacent)}'

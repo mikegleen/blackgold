@@ -2,13 +2,16 @@
 
 """
 import argparse
-from enum import Enum
+import config
+import copy
 import heapq
+import random
 import sys
 import time
 
-from .node import Node
-from .graph import Graph
+from node import Node
+from graph import Graph
+from player import Player
 
 
 def trace(level, template, *args):
@@ -16,40 +19,26 @@ def trace(level, template, *args):
         print(template.format(*args))
 
 
-class PlayerIDs(Enum):
-    RED = '-R-'
-    TAN = '-T-'
-    BLUE = '-B-'
-    ORANGE = '-O-'
+# print(list(PlayerIDs))
+# sys.exit()
 
 
-# hardcode the rows in the first column to place the trucks
-TRUCK_INIT_ROWS = [1, 5, 7, 9]
+class OilCompany:
+    def __init__(self, nplayers: int):
+        self.price = config.INITIAL_PRICE
+        self.storage_tanks = [0 for n in range(nplayers)]
 
 
 class Game:
-
     def __init__(self, graph, nplayers):
-        lp = list(PlayerIDs)
+        self.black_train_col = 0
         self.players = []
-        assert nplayers <= len(lp)
+        assert nplayers <= len(config.TRUCK_INIT_ROWS)
         for n in range(nplayers):
-            node: Node = graph.board[TRUCK_INIT_ROWS[n]][0]
-            player = Player(lp[n], node)
-            node.truck = player
+            trucknode: Node = graph.board[config.TRUCK_INIT_ROWS[n]][0]
+            player = Player(n, trucknode)
+            trucknode.truck = player
             self.players.append(player)
-
-
-class Player:
-
-    def __init__(self, playerid, truck_node: Node):
-        self.id = playerid  # am enum member
-        self.truck_node = truck_node
-        self.train_col = None
-        self.oilrigs = 0
-        self.rigs_in_use = []
-        self.cash = 15_000
-        self.barrels = 0
 
 
 def read_board(csvfile):
@@ -96,6 +85,28 @@ def read_board(csvfile):
     return rawboard
 
 
+def drill_sites(goal_node):
+    """
+    goal node: a node next to a node that is a potential drill site.
+    Return a list of goal nodes on the path to this goal node, including this
+    node.
+    Each list entry is a tuple containing the node with wells and the node on
+    our path to stop at in order to drill there.
+
+    """
+    ret = []
+    node = goal_node
+    while node:
+        for n in node.adjacent:
+            if n.wells:
+                ret.append((n, node))
+        node = node.previous
+        # If the node has wells, we're not allowed to stop there.
+        while node and node.wells:
+            node = node.previous
+    return ret
+
+
 def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
     """
     :param root: the Node to start from. The Nodes have been initialized
@@ -131,8 +142,8 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
             if nextn in visited:  # if visited, skip
                 trace(3, 'skipping, visited: nextn={}', nextn)
                 continue
-            if nextn.derrick:
-                trace(3, 'skipping, derrick: nextn={}', nextn)
+            if nextn.derrick or nextn.truck:
+                trace(3, 'skipping, derrick or truck: nextn={}', nextn)
                 continue
             new_dist = current.distance + nextn.terrain
             nextn_dist = nextn.distance
@@ -154,38 +165,83 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
                 print(f'{updated}: current: {current.id}, next: {nextn.id}, '
                       f'dist: {idist(nextn_dist)} -> {nextn.distance}')
         trace(3, 'unvisited: {}', unvisited_queue)
-    goals = sorted(list(goals), key=lambda node: node.col, reverse=True)
+    goals = sorted(list(goals), key=lambda node: node.col * 100 + node.row,
+                   reverse=True)
     return goals
 
 
-def main(args):
-    rawboard = read_board(args.incsv)
-    graph = Graph(rawboard, args.nplayers)
-    graph.dump_raw_board(args.dumprawboard)
-    if args.verbose >= 3:
+def choose_goal(player: Player, graph: Graph, maxcost: int) -> Node:
+    """
+    Choose a player's next move:
+    Find all possible goal nodes.
+    Assign points to a possible move according to:
+    1. Columns moved right
+    2. Oil reserve at potential drill site.
+    @Player player
+    @Graph graph
+    @int maxcost
+
+    """
+    pass
+
+
+def time_dijkstra(graph):
+    t1 = time.time()
+    for _ in range(_args.timeit):
+        graph.reset_distance()
+        dijkstra(graph.board[_args.row][_args.column],
+                 maxcost=_args.maxcost, verbose=_args.verbose)
+    t2 = time.time()
+    print(t2 - t1)
+
+
+def one_dijkstra(graph):
+    dijkstra(graph.board[_args.row][_args.column],
+             maxcost=_args.maxcost, verbose=_args.verbose)
+
+
+def one_turn(player, graph):
+    goal: Node = choose_goal(player, graph, _maxcost)
+
+
+def play_game(graph):
+    global end_game
+
+    beige_action_cards = copy.deepcopy(config.BEIGE_ACTION_CARDS)
+    red_action_cards = copy.deepcopy(config.RED_ACTION_CARDS)
+    random.shuffle(beige_action_cards)
+    random.shuffle(red_action_cards)
+    end_game = False
+    graph.reset_distance()
+    goals = dijkstra(graph.board[_args.row][_args.column],
+                     maxcost=_args.maxcost, verbose=_args.verbose)
+    gsites = {g: drill_sites(g) for g in goals}
+    if _verbose >= 2:
+        print(f'{goals=}')
+        print(f'{gsites=}')
+
+
+def main():
+    rawboard = read_board(_args.incsv)
+    graph = Graph(rawboard, _args.nplayers)
+    graph.dump_raw_board(_args.dumprawboard)
+    if _verbose >= 3:
         graph.dump_board()
     nrows, ncols = graph.get_rows_cols()
-    if args.verbose >= 1:
-        m = args.maxcost
+    if _verbose >= 1:
+        m = _args.maxcost
         print(f'{nrows=} {ncols=}'
               f'{" maxcost=" + str(m) if m < sys.maxsize else ""}')
-    if args.timeit:
-        t1 = time.time()
-        for _ in range(args.timeit):
-            graph.reset_distance()
-            dijkstra(graph.board[args.row][args.column],
-                     maxcost=args.maxcost, verbose=_args.verbose)
-        t2 = time.time()
-        print(t2 - t1)
+    if _args.timeit:
+        time_dijkstra(graph)
+    elif _args.dijkstra:
+        one_dijkstra(graph)
     else:
-        graph.reset_distance()
-        goals = dijkstra(graph.board[args.row][args.column],
-                         maxcost=args.maxcost, verbose=_args.verbose)
-        print(f'{goals=}')
-    if args.verbose >= 2:
+        play_game(graph)
+    if _args.verbose >= 3:
         graph.dump_board()
     # print(board)
-    if args.print:
+    if _args.print:
         graph.print_board()
 
 
@@ -204,6 +260,9 @@ def getargs():
     ''')
     parser.add_argument('--dumprawboard', help='''
     Specify the file to dump the raw board to.
+    ''')
+    parser.add_argument('-k', '--dijkstra', help='''
+    Do one run of dijkstra. Implies -p.
     ''')
     parser.add_argument('-m', '--maxcost', type=int, default=sys.maxsize,
                         help='''
@@ -225,13 +284,18 @@ def getargs():
     Modify verbosity.
     ''')
     args = parser.parse_args()
+    if args.dijkstra:
+        args.print = True
     return args
 
 
 if __name__ == '__main__':
     assert sys.version_info >= (3, 8)
+    global end_game
     _args = getargs()
-    if _args.verbose > 1:
+    _maxcost = _args.maxcost
+    _verbose = _args.verbose
+    if _verbose > 1:
         print(f'verbosity: {_args.verbose}')
-    main(_args)
+    main()
     print('End giganten.')
