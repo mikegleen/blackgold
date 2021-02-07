@@ -12,6 +12,7 @@ import time
 from node import Node
 from graph import Graph
 from player import Player
+import oil_price
 
 
 def trace(level, template, *args):
@@ -19,26 +20,130 @@ def trace(level, template, *args):
         print(template.format(*args))
 
 
-# print(list(PlayerIDs))
-# sys.exit()
-
-
 class OilCompany:
     def __init__(self, nplayers: int):
         self.price = config.INITIAL_PRICE
-        self.storage_tanks = [0 for n in range(nplayers)]
+        self.storage_tanks = [0] * nplayers
 
 
 class Game:
-    def __init__(self, graph, nplayers):
-        self.black_train_col = 0
-        self.players = []
+    def __init__(self, graph: Graph, nplayers):
         assert nplayers <= len(config.TRUCK_INIT_ROWS)
+        self.nplayers = nplayers
+        self.black_train_col = 0
+        self.selling_price: list[int] = [5000] * 3
+        self.players = []
+        self.graph = graph
         for n in range(nplayers):
             trucknode: Node = graph.board[config.TRUCK_INIT_ROWS[n]][0]
             player = Player(n, trucknode)
             trucknode.truck = player
             self.players.append(player)
+        self.beige_action_cards = copy.deepcopy(config.BEIGE_ACTION_CARDS)
+        self.red_action_cards = copy.deepcopy(config.RED_ACTION_CARDS)
+        self.beige_discards = []
+        self.red_discards = []
+        random.shuffle(self.beige_action_cards)
+        random.shuffle(self.red_action_cards)
+        tiles = copy.deepcopy(config.TILES)
+        for k in (1, 2, 3):
+            random.shuffle(tiles[k])
+        for node in graph.graph:
+            # Select a random tile from the shuffled list according
+            # to the number of wells. Indicate that this is the amount
+            # of oil underground.
+            node.oil_reserve = tiles[node.wells].pop() if node.wells else 0
+
+    def move_black_train(self, spaces_to_move):
+        self.black_train_col += spaces_to_move
+        game_ended = self.black_train_col >= self.graph.columns
+        return game_ended
+
+
+def draw_action_card(cards, discards):
+    """
+    
+    @param cards: 
+    @param discards: 
+    @return: The drawn card, the modified cards list and the (possibly)
+             modified discards list
+    """
+    try:
+        card = cards.pop()
+    except IndexError:  # Oops, the deck is empty
+        cards = discards
+        random.shuffle(cards)
+        discards = []
+        card = cards.pop()
+    return card, cards, discards
+
+
+def one_turn(starting_player: Player, game: Game):
+    """
+    @param starting_player:
+    @param game:
+    @return: None
+    """
+    
+    # Action 1: Change the selling price
+    for company in range(config.NUMBER_OF_OIL_COMPANIES):
+        oil_price.set_price(game.selling_price, company)
+
+    # Action 2: Take action cards
+    action_cards = []
+    red_card, game.red_action_cards, game.red_discards = draw_action_card(
+        game.red_action_cards, game.red_discards)
+    action_cards.append(red_card)
+    if game.move_black_train(red_card.black_loco):
+        return True  # game ended
+    for i in range(len(game.players)):
+        beige_card, game.beige_action_cards, game.beige_discards = (
+            draw_action_card(game.beige_action_cards, game.beige_discards))
+        action_cards.append(beige_card)
+
+    # todo: Heuristic needed to select the best action card.
+
+    # Each player selects one action card, starting with starting_player
+    playern = starting_player.id
+    for n in range(game.nplayers):
+        player = game.players[playern]
+        licenses = movement = markers = backwards = oilprice = 0
+
+        cardn = random.randrange(len(action_cards))
+        if cardn == 0:
+            licenses = red_card.licenses
+            movement = red_card.movement
+            markers = red_card.markers
+            backwards = red_card.backwards
+            game.red_discards.append(red_card)
+            del action_cards[0]
+        else:
+            card = action_cards[cardn]
+            game.beige_discards.append(card)
+            del action_cards[cardn]
+            licenses = card.licenses
+            movement = card.movement
+            oilprice = card.oilprice
+
+        # Action 3: Hand out licenses
+
+        # Select the next player
+        playern += 1
+        if playern >= game.nplayers:
+            playern = 0
+    # goal: Node = choose_goal(player, game.graph, _maxcost)
+
+
+def play_game(graph):
+
+    game = Game(graph, _nplayers)
+    game_ended = False
+    while not game_ended:
+
+        for playerid in range(_nplayers):
+            game_ended = one_turn(game.players[playerid], game)
+            if game_ended:
+                return
 
 
 def read_board(csvfile):
@@ -182,7 +287,12 @@ def choose_goal(player: Player, graph: Graph, maxcost: int) -> Node:
     @int maxcost
 
     """
-    pass
+    graph.reset_distance()
+    truck_node = player.truck_node
+    goals = dijkstra(graph.board[truck_node.row][truck_node.col],
+                     maxcost=maxcost, verbose=_args.verbose)
+    gsites = {g: drill_sites(g) for g in goals}
+    return truck_node
 
 
 def time_dijkstra(graph):
@@ -196,29 +306,13 @@ def time_dijkstra(graph):
 
 
 def one_dijkstra(graph):
-    dijkstra(graph.board[_args.row][_args.column],
-             maxcost=_args.maxcost, verbose=_args.verbose)
-
-
-def one_turn(player, graph):
-    goal: Node = choose_goal(player, graph, _maxcost)
-
-
-def play_game(graph):
-    global end_game
-
-    beige_action_cards = copy.deepcopy(config.BEIGE_ACTION_CARDS)
-    red_action_cards = copy.deepcopy(config.RED_ACTION_CARDS)
-    random.shuffle(beige_action_cards)
-    random.shuffle(red_action_cards)
-    end_game = False
-    graph.reset_distance()
     goals = dijkstra(graph.board[_args.row][_args.column],
                      maxcost=_args.maxcost, verbose=_args.verbose)
     gsites = {g: drill_sites(g) for g in goals}
     if _verbose >= 2:
         print(f'{goals=}')
         print(f'{gsites=}')
+    return gsites
 
 
 def main():
@@ -291,10 +385,10 @@ def getargs():
 
 if __name__ == '__main__':
     assert sys.version_info >= (3, 8)
-    global end_game
     _args = getargs()
     _maxcost = _args.maxcost
     _verbose = _args.verbose
+    _nplayers = _args.nplayers
     if _verbose > 1:
         print(f'verbosity: {_args.verbose}')
     main()
