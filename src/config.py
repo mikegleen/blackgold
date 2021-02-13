@@ -1,6 +1,9 @@
 """
 
 """
+from collections import namedtuple
+import sys
+
 # TILES: This dict defines the cardboard pieces that cover the squares
 #        containing wells.
 #        The key is the number of oil wells, the value is a list of the
@@ -16,10 +19,11 @@ TILES = {
     3: [4] * 4 + [5] * 4 + [6] * 4
 }
 """
-TRAIN_MOVEMENT_COSTS:
-How much it costs to move a player's train one column.
+TRAIN_COSTS:
+How much it costs to move a player's train one column. Appending maxsize to the
+end prevents train movement past the board.
 """
-BLACK_TRAIN_COSTS = [0] + [1] * 9 + [2] * 7 + [3] * 3
+TRAIN_COSTS = [0] + [1] * 9 + [2] * 7 + [3] * 3 + [sys.maxsize]
 
 INITIAL_CASH = 15_000
 INITIAL_PRICE = 5000
@@ -27,68 +31,78 @@ INITIAL_OIL_RIGS = 5
 # the rows in the first column to place the trucks at the start of the game
 TRUCK_INIT_ROWS = [1, 5, 7, 9]
 
-"""
-    Define the contents of the card decks.
-"""
+NUMBER_OF_OIL_COMPANIES = 3
 
 """
-black loco: Advance the black locomotive.
-licenses: Deal green license cards.
-movement: Advance the player's loco or truck.
-markers: Take one crude oil marker.
-backwards: Move all opponents locos backwards.
+    Heuristics
 """
+GOAL_MULTIPLIER = 2  # Movement score in choose_goal()
 
-RED_ACTION_CARDS = (
-    (3, 3, 4, 1, 0),
-    (2, 4, 8, 0, 2),
-    (2, 3, 6, 0, 3),
-    (2, 2, 6, 1, 0),
-    (1, 4, 2, 1, 0),
-    (3, 2, 4, 0, 5),
-    (2, 2, 6, 0, 4),
-    (3, 3, 4, 1, 0),
-    (1, 2, 8, 0, 3),
-    (2, 2, 6, 1, 0),
-    (3, 2, 6, 0, 4),
-    (2, 3, 2, 0, 5),
-)
 
 """
-licenses
-movement
-oilprice: Change any oil price up or down. 
+    Define the contents of the red card deck.
+
+    black loco: Advance the black locomotive.
+    nlicenses: Number of green license cards to deal
+    movement: Advance the player's loco or truck.
+    markers: Take one crude oil marker.
+    backwards: Move all opponents locos backwards.
 """
-BEIGE_ACTION_CARDS = (
-    (2, 10, 2),
-    (7, 4, 0),
-    (5, 8, 0),
-    (5, 5, 3),
-    (4, 10, 0),
-    (5, 8, 0),
-    (4, 5, 4),
-    (4, 10, 0),
-    (4, 6, 3),
-    (5, 8, 0),
-    (5, 8, 0),
-    (2, 10, 2),
-    (3, 8, 3),
-    (6, 6, 0),
-    (3, 12, 0),
-    (5, 8, 0),
-    (4, 10, 0),
-    (3, 12, 0),
-    (6, 6, 0),
-    (5, 8, 0),
-    (7, 4, 0),
-    (4, 5, 4),
-    (6, 6, 0),
-    (8, 3, 0),
-    (4, 5, 4),
-    (6, 6, 0),
-    (3, 12, 0),
-    (4, 10, 0),
-    (6, 4, 2),
-    (4, 10, 0),
-)
+RedActionCard = namedtuple('RedActionCard', 'black_loco nlicenses movement'
+                                            ' markers backwards')
+RED_ACTION_CARDS = [
+    RedActionCard(3, 3, 4, 1, 0),
+    RedActionCard(2, 4, 8, 0, 2),
+    RedActionCard(2, 3, 6, 0, 3),
+    RedActionCard(2, 2, 6, 1, 0),
+    RedActionCard(1, 4, 2, 1, 0),
+    RedActionCard(3, 2, 4, 0, 5),
+    RedActionCard(2, 2, 6, 0, 4),
+    RedActionCard(3, 3, 4, 1, 0),
+    RedActionCard(1, 2, 8, 0, 3),
+    RedActionCard(2, 2, 6, 1, 0),
+    RedActionCard(3, 2, 6, 0, 4),
+    RedActionCard(2, 3, 2, 0, 5),
+]
+
+"""
+    Define the contents of the beige card deck.
+
+    nlicenses
+    movement
+    oilprice: Change any oil price up or down. 
+"""
+BeigeActionCard = namedtuple('BeigeActionCard', 'nlicenses movement oilprice')
+BEIGE_ACTION_CARDS = [
+    BeigeActionCard(2, 10, 2),
+    BeigeActionCard(7, 4, 0),
+    BeigeActionCard(5, 8, 0),
+    BeigeActionCard(5, 5, 3),
+    BeigeActionCard(4, 10, 0),
+    BeigeActionCard(5, 8, 0),
+    BeigeActionCard(4, 5, 4),
+    BeigeActionCard(4, 10, 0),
+    BeigeActionCard(4, 6, 3),
+    BeigeActionCard(5, 8, 0),
+    BeigeActionCard(5, 8, 0),
+    BeigeActionCard(2, 10, 2),
+    BeigeActionCard(3, 8, 3),
+    BeigeActionCard(6, 6, 0),
+    BeigeActionCard(3, 12, 0),
+    BeigeActionCard(5, 8, 0),
+    BeigeActionCard(4, 10, 0),
+    BeigeActionCard(3, 12, 0),
+    BeigeActionCard(6, 6, 0),
+    BeigeActionCard(5, 8, 0),
+    BeigeActionCard(7, 4, 0),
+    BeigeActionCard(4, 5, 4),
+    BeigeActionCard(6, 6, 0),
+    BeigeActionCard(8, 3, 0),
+    BeigeActionCard(4, 5, 4),
+    BeigeActionCard(6, 6, 0),
+    BeigeActionCard(3, 12, 0),
+    BeigeActionCard(4, 10, 0),
+    BeigeActionCard(6, 4, 2),
+    BeigeActionCard(4, 10, 0),
+]
 

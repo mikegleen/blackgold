@@ -18,10 +18,10 @@ import matplotlib.pyplot as plt
 import random
 
 debug = False
-maxblue = 9000.
-minblue = 7000.
-minwhite = 4000.
-minred = 1500.
+maxblue = 9000
+minblue = 7000
+minwhite = 4000
+minred = 1500
 
 dicevalues = [2, 2, 3, 3, 4, 4]
 dicecolors = [0, 1, 0, 1, 0, 1]
@@ -32,7 +32,7 @@ colors = ('R', 'B')
 
 def next_price_1(oldprice, throw):
     value = dicevalues[throw]
-    deltaprice = value * 500.
+    deltaprice = value * 500
     color = dicecolors[throw]
     if color == red:
         if oldprice < minwhite:  # in the red zone
@@ -51,16 +51,16 @@ def next_price_1(oldprice, throw):
 
 def next_price_2(oldprice, throw):
     value = dicevalues[throw]
-    deltaprice = value * 500.
+    deltaprice = value * 500
     color = dicecolors[throw]
     if color == red:
         newprice = oldprice - deltaprice
-        if newprice < 1500.:
-            newprice = 1500.
+        if newprice < 1500:
+            newprice = 1500
     else:                     # dice color is blue
         newprice = oldprice + deltaprice
-        if newprice > 9000.:
-            newprice = 9000.
+        if newprice > 9000:
+            newprice = 9000
     if debug:
         print(f'{value}{colors[color]} ${oldprice} -> ${newprice}')
     return newprice
@@ -69,6 +69,11 @@ def next_price_2(oldprice, throw):
 def next_price(oldprice):
     ix = random.randint(0, 5)
     return next_price_1(oldprice, ix)
+
+
+def set_price(prices: list, company: int):
+    ix = random.randint(0, 5)
+    prices[company] = next_price_1(prices[company], ix)
 
 
 def game(moves):

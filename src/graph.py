@@ -17,8 +17,8 @@ DOWNWARDS_ARROW = '\u2193'
 
 
 class Graph:
-    # board will hold the numpy array[rows, cols] of Node instances
-
+    # board - hold the array[rows, cols] of Node instances
+    # graph - a 1d list of the Nodes, easier to iterate over.
     # for print_board: 0->illegal 1->flat 2->hilly 3->mountain
     GREEN = Fore.GREEN
     YELLOW = Fore.YELLOW
@@ -53,6 +53,9 @@ class Graph:
                     # Select a random tile from the shuffled list according
                     # to the number of wells. Indicate that this is the amount
                     # of oil underground.
+                    # Note: The oil reserve is re-initialized by play_game()
+                    #       but do it here too as the graph can be used outside
+                    #       of a game.
                     node.oil_reserve = tiles[node.wells].pop()
                 # For testing, force a derrick
                 # print(node)

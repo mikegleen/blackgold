@@ -3,7 +3,6 @@
 """
 import sys
 from typing import Union
-import player
 
 
 class Node:
@@ -88,13 +87,13 @@ class Node:
         self.exhausted: bool = False
         self.goal: int = 0  # count of adjacent nodes with unbuilt wells
         self.derrick: bool = derrick
-        self.truck: Union[player.Player, None] = None  # set when a truck moves to this node
+        self.truck = None  # set when a truck moves to this node
         self.adjacent = []  # will be populated by set_neighbors
         self.cell = None  # this node's string from rawboard
 
         # Fields set by dijkstra
         self.distance: int = sys.maxsize
-        self.previous = None  # will be set when visited
+        self.previous: Union[Node, None] = None  # will be set when visited
 
     def __str__(self):
         e = 'T' if self.exhausted else 'F'

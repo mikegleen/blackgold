@@ -53,6 +53,9 @@ class Game:
             # to the number of wells. Indicate that this is the amount
             # of oil underground.
             node.oil_reserve = tiles[node.wells].pop() if node.wells else 0
+        self.licenses = [1] * 39 + [2] * 39
+        self.license_discards = []
+        random.shuffle(self.licenses)
 
     def move_black_train(self, spaces_to_move):
         self.black_train_col += spaces_to_move
@@ -62,7 +65,6 @@ class Game:
 
 def draw_action_card(cards, discards):
     """
-    
     @param cards: 
     @param discards: 
     @return: The drawn card, the modified cards list and the (possibly)
@@ -76,6 +78,25 @@ def draw_action_card(cards, discards):
         discards = []
         card = cards.pop()
     return card, cards, discards
+
+
+def deal_licenses(nlicenses, cards, discards):
+    """
+    A license card can have either one or two licenses. Accumulate .
+    @param nlicenses:
+    @param cards:
+    @param discards:
+    @return: the number of single-license cards and the number of
+             double-license cards followed by the updated lists
+    """
+    singles = doubles = 0
+    for n in range(nlicenses):
+        card, cards, discards = draw_action_card(cards, discards)
+        if card == 1:
+            singles += 1
+        else:
+            doubles +=1
+    return singles, doubles, cards, discards
 
 
 def one_turn(starting_player: Player, game: Game):
@@ -101,37 +122,46 @@ def one_turn(starting_player: Player, game: Game):
             draw_action_card(game.beige_action_cards, game.beige_discards))
         action_cards.append(beige_card)
 
-    # todo: Heuristic needed to select the best action card.
-
     # Each player selects one action card, starting with starting_player
     playern = starting_player.id
     for n in range(game.nplayers):
         player = game.players[playern]
-        licenses = movement = markers = backwards = oilprice = 0
 
+        # todo: Heuristic needed to select the best action card.
         cardn = random.randrange(len(action_cards))
-        if cardn == 0:
-            licenses = red_card.licenses
+        if cardn == 0:  # Selected the red card
+            nlicenses = red_card.nlicenses
             movement = red_card.movement
             markers = red_card.markers
             backwards = red_card.backwards
+            oilprice = 0
             game.red_discards.append(red_card)
-            del action_cards[0]
-        else:
+        else:  # Selected one of the beige cards
             card = action_cards[cardn]
-            game.beige_discards.append(card)
-            del action_cards[cardn]
-            licenses = card.licenses
+            nlicenses = card.nlicenses
             movement = card.movement
             oilprice = card.oilprice
-
-        # Action 3: Hand out licenses
-
+            markers = backwards = 0
+            game.beige_discards.append(card)
+        del action_cards[cardn]
+        player.set_actions(nlicenses, movement, markers, backwards, oilprice)
         # Select the next player
         playern += 1
         if playern >= game.nplayers:
             playern = 0
-    # goal: Node = choose_goal(player, game.graph, _maxcost)
+
+    # Action 3: Hand out licenses
+    for player in game.players:
+        singles, doubles, game.licenses, game.license_discards = (
+            deal_licenses(player.actions.nlicenses, game.licenses,
+                          game.license_discards))
+        player.single_licenses += singles
+        player.double_licenses += doubles
+
+    # Action 4 Move the truck and locomotive and do special actions
+    for player in game.players:
+        goal: Node = choose_goal(player, game.graph, player.actions.movement)
+
 
 
 def play_game(graph):
@@ -218,7 +248,9 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
              during the creation of the Graph instance.
     :param maxcost: Do not search for nodes more than maxcost away.
     :param verbose: the debug level
-    :return: The Node's distance field is updated in each instance in the
+    :return: A tuple of the set of visited nodes and a set of the goal nodes
+
+             The Node's distance field is updated in each node in the
              board that is reachable from the root node given the game's
              constraints such as within the maximum distance from the root
              where the "distance" is the sum of the costs of entering each
@@ -270,32 +302,55 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
                 print(f'{updated}: current: {current.id}, next: {nextn.id}, '
                       f'dist: {idist(nextn_dist)} -> {nextn.distance}')
         trace(3, 'unvisited: {}', unvisited_queue)
-    goals = sorted(list(goals), key=lambda node: node.col * 100 + node.row,
-                   reverse=True)
-    return goals
+    # Convert the set of goals into a list sorted by column
+    # goals = sorted(list(goals), key=lambda node: node.col, reverse=True)
+    return visited, goals
 
 
 def choose_goal(player: Player, graph: Graph, maxcost: int) -> Node:
     """
     Choose a player's next move:
-    Find all possible goal nodes.
-    Assign points to a possible move according to:
+    Iterate over possible destination nodes:
+    Assign a score to a possible move according to:
     1. Columns moved right
-    2. Oil reserve at potential drill site.
+    2. Is the destination node a goal node?
+    3. Are there other goal nodes on the path to the destination node?
+    4. Do I need to advance my train?
     @Player player
     @Graph graph
     @int maxcost
 
     """
+    scores = []
     graph.reset_distance()
     truck_node = player.truck_node
-    goals = dijkstra(graph.board[truck_node.row][truck_node.col],
-                     maxcost=maxcost, verbose=_args.verbose)
-    gsites = {g: drill_sites(g) for g in goals}
-    return truck_node
+    visited, goals = dijkstra(truck_node, maxcost, verbose=_args.verbose)
+    for node in visited:
+        score = 0
+        score += node.col - truck_node.col  # how much the truck is advancing
+        score += node.goal * config.GOAL_MULTIPLIER
+        prevnode: Node = node.previous
+        while prevnode:
+            score += prevnode.goal
+        if player.train_col < node.col:
+            # Compute points available to move the train
+            points = maxcost - node.distance
+            train_dest = player.train_col
+            while (points_needed := config.TRAIN_COSTS[train_dest + 1]) <= points:
+                points -= points_needed
+                train_dest += 1
+            score += train_dest - player.train_col
+        scores.append = (node, score)
+    scores = sorted(scores, key=lambda x: x[1])  # make sorted list
+    return scores[-1][0]  # return the node with the highest score
 
 
 def time_dijkstra(graph):
+    """
+    Called if the --timeit command-line option is selected.
+    @param graph:
+    @return: None
+    """
     t1 = time.time()
     for _ in range(_args.timeit):
         graph.reset_distance()
@@ -306,6 +361,11 @@ def time_dijkstra(graph):
 
 
 def one_dijkstra(graph):
+    """
+    Called if --dijkstra is selected on the command line.
+    @param graph:
+    @return: dict of drill sites on the path to our goal
+    """
     goals = dijkstra(graph.board[_args.row][_args.column],
                      maxcost=_args.maxcost, verbose=_args.verbose)
     gsites = {g: drill_sites(g) for g in goals}
