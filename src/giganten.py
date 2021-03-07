@@ -63,7 +63,7 @@ class Game:
         return game_ended
 
 
-def draw_action_card(cards, discards):
+def draw_card(cards, discards):
     """
     @param cards: 
     @param discards: 
@@ -91,11 +91,11 @@ def deal_licenses(nlicenses, cards, discards):
     """
     singles = doubles = 0
     for n in range(nlicenses):
-        card, cards, discards = draw_action_card(cards, discards)
+        card, cards, discards = draw_card(cards, discards)
         if card == 1:
             singles += 1
         else:
-            doubles +=1
+            doubles += 1
     return singles, doubles, cards, discards
 
 
@@ -112,14 +112,14 @@ def one_turn(starting_player: Player, game: Game):
 
     # Action 2: Take action cards
     action_cards = []
-    red_card, game.red_action_cards, game.red_discards = draw_action_card(
+    red_card, game.red_action_cards, game.red_discards = draw_card(
         game.red_action_cards, game.red_discards)
     action_cards.append(red_card)
     if game.move_black_train(red_card.black_loco):
         return True  # game ended
     for i in range(len(game.players)):
         beige_card, game.beige_action_cards, game.beige_discards = (
-            draw_action_card(game.beige_action_cards, game.beige_discards))
+            draw_card(game.beige_action_cards, game.beige_discards))
         action_cards.append(beige_card)
 
     # Each player selects one action card, starting with starting_player
@@ -160,12 +160,10 @@ def one_turn(starting_player: Player, game: Game):
 
     # Action 4 Move the truck and locomotive and do special actions
     for player in game.players:
-        goal: Node = choose_goal(player, game.graph, player.actions.movement)
-
+        goal: Node = choose_goal(player, game.graph)
 
 
 def play_game(graph):
-
     game = Game(graph, _nplayers)
     game_ended = False
     while not game_ended:
@@ -307,7 +305,7 @@ def dijkstra(root: Node, maxcost=sys.maxsize, verbose=1):
     return visited, goals
 
 
-def choose_goal(player: Player, graph: Graph, maxcost: int) -> Node:
+def choose_goal(player: Player, graph: Graph) -> Node:
     """
     Choose a player's next move:
     Iterate over possible destination nodes:
@@ -318,30 +316,34 @@ def choose_goal(player: Player, graph: Graph, maxcost: int) -> Node:
     4. Do I need to advance my train?
     @Player player
     @Graph graph
-    @int maxcost
-
     """
     scores = []
     graph.reset_distance()
     truck_node = player.truck_node
+    maxcost = player.actions.movement
+
     visited, goals = dijkstra(truck_node, maxcost, verbose=_args.verbose)
     for node in visited:
         score = 0
         score += node.col - truck_node.col  # how much the truck is advancing
+        # Increase the score if adjacent nodes have wells
         score += node.goal * config.GOAL_MULTIPLIER
         prevnode: Node = node.previous
         while prevnode:
+            # Increase the score if a node on the path is a goal, but no extra
+            # if the node has more than one neighbor with wells
             score += prevnode.goal
         if player.train_col < node.col:
             # Compute points available to move the train
             points = maxcost - node.distance
+            # See how far we can move the train
             train_dest = player.train_col
             while (points_needed := config.TRAIN_COSTS[train_dest + 1]) <= points:
                 points -= points_needed
                 train_dest += 1
             score += train_dest - player.train_col
         scores.append = (node, score)
-    scores = sorted(scores, key=lambda x: x[1])  # make sorted list
+    scores.sort(key=lambda x: x[1])
     return scores[-1][0]  # return the node with the highest score
 
 
@@ -378,14 +380,15 @@ def one_dijkstra(graph):
 def main():
     rawboard = read_board(_args.incsv)
     graph = Graph(rawboard, _args.nplayers)
-    graph.dump_raw_board(_args.dumprawboard)
+    if _args.dumprawboard:
+        graph.dump_raw_board(_args.dumprawboard)
     if _verbose >= 3:
         graph.dump_board()
     nrows, ncols = graph.get_rows_cols()
     if _verbose >= 1:
         m = _args.maxcost
         print(f'{nrows=} {ncols=}'
-              f'{" maxcost=" + str(m) if m < sys.maxsize else ""}')
+              f'{" maxcost=" + str(m) if m < sys.maxsize else "∞"}')
     if _args.timeit:
         time_dijkstra(graph)
     elif _args.dijkstra:
@@ -410,17 +413,18 @@ def getargs():
     The input CSV file contains data by columns and needs to be flipped.
     ''')
     parser.add_argument('-c', '--column', type=int, default=0, help='''
-    Start column.
+    Start column. For testing.
     ''')
     parser.add_argument('--dumprawboard', help='''
-    Specify the file to dump the raw board to.
+    Specify the file to dump the raw board to. Useful if the input is by
+    columns. The output raw board is by rows.
     ''')
     parser.add_argument('-k', '--dijkstra', help='''
-    Do one run of dijkstra. Implies -p.
+    Do one run of dijkstra. Implies -p. For testing.
     ''')
     parser.add_argument('-m', '--maxcost', type=int, default=sys.maxsize,
                         help='''
-    Maximum distance of interest.
+    Maximum distance of interest. For testing.
     ''')
     parser.add_argument('-n', '--nplayers', default=4, type=int, help='''
     Specify the number of players; the default is 4.
@@ -429,7 +433,7 @@ def getargs():
     Print the finished board with distances.
     ''')
     parser.add_argument('-r', '--row', type=int, default=0, help='''
-    Start row.
+    Start row. For testing.
     ''')
     parser.add_argument('-t', '--timeit', type=int, help='''
     Time the dijkstra function with this number of iterations.
