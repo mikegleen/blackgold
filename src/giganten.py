@@ -2,12 +2,14 @@
 
 """
 import argparse
+from collections import namedtuple
 import config
 import copy
 import heapq
 import random
 import sys
 import time
+
 
 from node import Node
 from graph import Graph
@@ -53,7 +55,7 @@ class Game:
             # to the number of wells. Indicate that this is the amount
             # of oil underground.
             node.oil_reserve = tiles[node.wells].pop() if node.wells else 0
-        self.licenses = [1] * 39 + [2] * 39
+        self.licenses = copy.deepcopy(config.LICENSE_CARDS)
         self.license_discards = []
         random.shuffle(self.licenses)
 
@@ -67,43 +69,46 @@ def draw_card(cards, discards):
     """
     @param cards: 
     @param discards: 
-    @return: The drawn card, the modified cards list and the (possibly)
-             modified discards list
+    @return: The drawn card
     """
     try:
         card = cards.pop()
     except IndexError:  # Oops, the deck is empty
-        cards = discards
+        try:
+            while card := discards.pop():
+                cards.append(card)
+        except IndexError:
+            pass
         random.shuffle(cards)
-        discards = []
         card = cards.pop()
-    return card, cards, discards
+    return card
 
 
-def deal_licenses(nlicenses, cards, discards):
+def deal_licenses(player: Player, cards: list[config.LicenseCard],
+                  discards: list[config.LicenseCard]):
     """
     A license card can have either one or two licenses. Accumulate .
-    @param nlicenses:
+    @param player:
     @param cards:
     @param discards:
     @return: the number of single-license cards and the number of
              double-license cards followed by the updated lists
     """
-    singles = doubles = 0
-    for n in range(nlicenses):
-        card, cards, discards = draw_card(cards, discards)
-        if card == 1:
-            singles += 1
+    print(f'deal_licenses: {len(cards)=}, {len(discards)=}')
+    for n in range(player.actions.nlicenses):
+        card: config.LicenseCard = draw_card(cards, discards)
+        if card.num_licenses == 1:
+            player.single_licenses.append(card)
         else:
-            doubles += 1
-    return singles, doubles, cards, discards
+            player.double_licenses.append(card)
+    return
 
 
 def one_turn(starting_player: Player, game: Game):
     """
     @param starting_player:
     @param game:
-    @return: None
+    @return: True if game ended else None
     """
     
     # Action 1: Change the selling price
@@ -112,19 +117,23 @@ def one_turn(starting_player: Player, game: Game):
 
     # Action 2: Take action cards
     action_cards = []
-    red_card, game.red_action_cards, game.red_discards = draw_card(
-        game.red_action_cards, game.red_discards)
+    red_card = draw_card(game.red_action_cards, game.red_discards)
     action_cards.append(red_card)
     if game.move_black_train(red_card.black_loco):
         return True  # game ended
     for i in range(len(game.players)):
-        beige_card, game.beige_action_cards, game.beige_discards = (
-            draw_card(game.beige_action_cards, game.beige_discards))
+        beige_card = draw_card(game.beige_action_cards, game.beige_discards)
         action_cards.append(beige_card)
 
     # Each player selects one action card, starting with starting_player
     playern = starting_player.id
+    playerlist = []
     for n in range(game.nplayers):
+        playerlist.append(playern)
+        playern += 1
+        if playern >= game.nplayers:
+            playern = 0
+    for playern in playerlist:
         player = game.players[playern]
 
         # todo: Heuristic needed to select the best action card.
@@ -145,33 +154,34 @@ def one_turn(starting_player: Player, game: Game):
             game.beige_discards.append(card)
         del action_cards[cardn]
         player.set_actions(nlicenses, movement, markers, backwards, oilprice)
-        # Select the next player
-        playern += 1
-        if playern >= game.nplayers:
-            playern = 0
 
     # Action 3: Hand out licenses
     for player in game.players:
-        singles, doubles, game.licenses, game.license_discards = (
-            deal_licenses(player.actions.nlicenses, game.licenses,
-                          game.license_discards))
-        player.single_licenses += singles
-        player.double_licenses += doubles
+        deal_licenses(player, game.licenses, game.license_discards)
 
     # Action 4 Move the truck and locomotive and do special actions
-    for player in game.players:
-        goal: Node = choose_goal(player, game.graph)
+    for playern in playerlist:
+        player = game.players[playern]
+        nextnode: Node = choose_goal(player, game.graph)
+        # todo: Examine goal nodes en route to this node
+        player.truck_node = nextnode
+        if nextnode.distance < player.actions.movement:
+            player.advance_train(_verbose)
+        print(f'one_turn: {playern=}, {nextnode=}')
+
+    if _args.short:
+        return True
 
 
-def play_game(graph):
+def play_game(graph, seed):
+    random.seed(seed)
     game = Game(graph, _nplayers)
     game_ended = False
     while not game_ended:
-
         for playerid in range(_nplayers):
             game_ended = one_turn(game.players[playerid], game)
             if game_ended:
-                return
+                break
 
 
 def read_board(csvfile):
@@ -218,6 +228,9 @@ def read_board(csvfile):
     return rawboard
 
 
+GSite = namedtuple('GSite', 'wellsq goalsq')
+
+
 def drill_sites(goal_node):
     """
     goal node: a node next to a node that is a potential drill site.
@@ -232,11 +245,12 @@ def drill_sites(goal_node):
     while node:
         for n in node.adjacent:
             if n.wells:
-                ret.append((n, node))
+                ret.append(GSite(n, node))
         node = node.previous
         # If the node has wells, we're not allowed to stop there.
         while node and node.wells:
             node = node.previous
+    print(repr(goal_node), ret)
     return ret
 
 
@@ -333,6 +347,7 @@ def choose_goal(player: Player, graph: Graph) -> Node:
             # Increase the score if a node on the path is a goal, but no extra
             # if the node has more than one neighbor with wells
             score += prevnode.goal
+            prevnode = prevnode.previous
         if player.train_col < node.col:
             # Compute points available to move the train
             points = maxcost - node.distance
@@ -342,8 +357,10 @@ def choose_goal(player: Player, graph: Graph) -> Node:
                 points -= points_needed
                 train_dest += 1
             score += train_dest - player.train_col
-        scores.append = (node, score)
+        scores.append((node, score))
     scores.sort(key=lambda x: x[1])
+    if _verbose >= 2:
+        print(f'choose_goal: {scores=}')
     return scores[-1][0]  # return the node with the highest score
 
 
@@ -370,7 +387,8 @@ def one_dijkstra(graph):
     """
     goals = dijkstra(graph.board[_args.row][_args.column],
                      maxcost=_args.maxcost, verbose=_args.verbose)
-    gsites = {g: drill_sites(g) for g in goals}
+    # print(goals[1])
+    gsites = {g: drill_sites(g) for g in goals[1]}
     if _verbose >= 2:
         print(f'{goals=}')
         print(f'{gsites=}')
@@ -388,13 +406,13 @@ def main():
     if _verbose >= 1:
         m = _args.maxcost
         print(f'{nrows=} {ncols=}'
-              f'{" maxcost=" + str(m) if m < sys.maxsize else "∞"}')
+              f'{" maxcost=" + (str(m) if m < sys.maxsize else "∞")}')
     if _args.timeit:
         time_dijkstra(graph)
     elif _args.dijkstra:
         one_dijkstra(graph)
     else:
-        play_game(graph)
+        play_game(graph, config.RANDOM_SEED)
     if _args.verbose >= 3:
         graph.dump_board()
     # print(board)
@@ -419,7 +437,7 @@ def getargs():
     Specify the file to dump the raw board to. Useful if the input is by
     columns. The output raw board is by rows.
     ''')
-    parser.add_argument('-k', '--dijkstra', help='''
+    parser.add_argument('-k', '--dijkstra', action='store_true', help='''
     Do one run of dijkstra. Implies -p. For testing.
     ''')
     parser.add_argument('-m', '--maxcost', type=int, default=sys.maxsize,
@@ -434,6 +452,9 @@ def getargs():
     ''')
     parser.add_argument('-r', '--row', type=int, default=0, help='''
     Start row. For testing.
+    ''')
+    parser.add_argument('-s', '--short', action='store_true', help='''
+    Stop after one turn.
     ''')
     parser.add_argument('-t', '--timeit', type=int, help='''
     Time the dijkstra function with this number of iterations.
