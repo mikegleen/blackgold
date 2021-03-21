@@ -33,11 +33,12 @@ TRUCK_INIT_ROWS = [1, 5, 7, 9]
 
 NUMBER_OF_OIL_COMPANIES = 3
 
-"""
-    Heuristics
-"""
-GOAL_MULTIPLIER = 2  # Movement score in choose_goal()
+# After Action 7, Selling Oil, any crude markers in storage tanks must be sold
+# to the bank for $1000 each.
+STORAGE_TANK_LIMIT = 2
 
+# Cost to build a derrick. The index is the number of wells on a site.
+BUILDING_COST = [0, 4000, 6000, 8000]
 
 """
     Define the contents of the red card deck.
@@ -105,4 +106,15 @@ BEIGE_ACTION_CARDS = [
     BeigeActionCard(6, 4, 2),
     BeigeActionCard(4, 10, 0),
 ]
+LicenseCard = namedtuple('LicenseCard', 'num_licenses')
+LICENSE_CARDS = [LicenseCard(1)] * 39 + [LicenseCard(2)] * 39
 
+RANDOM_SEED = 33
+
+"""
+    Heuristics for choosing a truck destination
+"""
+GOAL_MULTIPLIER = 2
+TRUCK_COLUMN_MULTIPLIER = 1
+PREV_GOAL_MULTIPLER = 1
+TRAIN_COLUMN_MULTIPLIER = 1

@@ -8,6 +8,8 @@ Rule 1 is the standard as defined in the game rules.
     Similarly, if the old price is in the blue zone, decreased it.
     If the old price is in the white zone (the middle), increase the price if
         the color of the die is blue, decreased otherwise.
+    Note that this rule never sets the price below 2000 or above 8500. Those
+        prices can be reached by a special action in the game.
 
 Rule 2 changes the rule so that the die color always controls whether the price
     increases or decreases, only limited by the minimum and maximum price.
@@ -55,12 +57,12 @@ def next_price_2(oldprice, throw):
     color = dicecolors[throw]
     if color == red:
         newprice = oldprice - deltaprice
-        if newprice < 1500:
-            newprice = 1500
+        if newprice < minred:
+            newprice = minred
     else:                     # dice color is blue
         newprice = oldprice + deltaprice
-        if newprice > 9000:
-            newprice = 9000
+        if newprice > maxblue:
+            newprice = maxblue
     if debug:
         print(f'{value}{colors[color]} ${oldprice} -> ${newprice}')
     return newprice
@@ -71,7 +73,13 @@ def next_price(oldprice):
     return next_price_1(oldprice, ix)
 
 
-def set_price(prices: list, company: int):
+def set_price(prices: list[int], company: int):
+    """
+
+    @param prices: a list containing the current price for each company.
+    @param company: an index into the list
+    @return: The company's price is updated.
+    """
     ix = random.randint(0, 5)
     prices[company] = next_price_1(prices[company], ix)
 
@@ -88,21 +96,21 @@ def game(moves):
         price2 = next_price_2(price2, ix)
         prices2[t] = price2
         count2[price2] += 1
-    mean1 = np.mean(prices1)
-    stddev1 = math.sqrt(np.var(prices1, ddof=1))
+    mean1 = np.ndarray.mean(prices1)
+    stddev1 = math.sqrt(np.ndarray.var(prices1, ddof=1))
     # print(from_node'algorithm 1: {mean1=} {stddev1= }')
-    mean2 = np.mean(prices2)
-    stddev2 = math.sqrt(np.var(prices2, ddof=1))
+    mean2 = np.ndarray.mean(prices2)
+    stddev2 = math.sqrt(np.ndarray.var(prices2, ddof=1))
     # print(from_node'algorithm 2: {mean2=} {stddev2= }')
     return mean1, mean2, stddev1, stddev2
 
 
 def stats(an, mm, ss, count, lbl, color):
     print(f'Algorithm {an}:')
-    meanm = np.mean(mm)
-    stddevm = math.sqrt(np.var(mm, ddof=1))
-    means = np.mean(ss)
-    stddevs = math.sqrt(np.var(ss, ddof=1))
+    meanm = np.ndarray.mean(mm)
+    stddevm = math.sqrt(np.ndarray.var(mm, ddof=1))
+    means = np.ndarray.mean(ss)
+    stddevs = math.sqrt(np.ndarray.var(ss, ddof=1))
     print(f'{meanm=:.2f}, {stddevm=:.2f}, {means=:.2f}, {stddevs=:.2f}')
     plt.plot(list(count), list(count.values()), '-ok', label=lbl, color=color)
 

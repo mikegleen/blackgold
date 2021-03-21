@@ -2,13 +2,12 @@
 
 """
 import argparse
-from collections import namedtuple
 import config
 import copy
 import heapq
 import random
 import sys
-import time
+from test.test_dijkstra import time_dijkstra, one_dijkstra
 
 
 from node import Node
@@ -22,18 +21,12 @@ def trace(level, template, *args):
         print(template.format(*args))
 
 
-class OilCompany:
-    def __init__(self, nplayers: int):
-        self.price = config.INITIAL_PRICE
-        self.storage_tanks = [0] * nplayers
-
-
 class Game:
     def __init__(self, graph: Graph, nplayers):
         assert nplayers <= len(config.TRUCK_INIT_ROWS)
         self.nplayers = nplayers
         self.black_train_col = 0
-        self.selling_price: list[int] = [5000] * 3
+        self.selling_price: list[int] = [5000] * config.NUMBER_OF_OIL_COMPANIES
         self.players = []
         self.graph = graph
         for n in range(nplayers):
@@ -62,6 +55,8 @@ class Game:
     def move_black_train(self, spaces_to_move):
         self.black_train_col += spaces_to_move
         game_ended = self.black_train_col >= self.graph.columns
+        if game_ended:
+            print(f'Game ended. {self.black_train_col=}')
         return game_ended
 
 
@@ -74,11 +69,9 @@ def draw_card(cards, discards):
     try:
         card = cards.pop()
     except IndexError:  # Oops, the deck is empty
-        try:
-            while card := discards.pop():
-                cards.append(card)
-        except IndexError:
-            pass
+        while discards:
+            card = discards.pop()
+            cards.append(card)
         random.shuffle(cards)
         card = cards.pop()
     return card
@@ -101,6 +94,8 @@ def deal_licenses(player: Player, cards: list[config.LicenseCard],
             player.single_licenses.append(card)
         else:
             player.double_licenses.append(card)
+    player.nlicenses = (len(player.single_licenses)
+                        + 2 * len(player.double_licenses))
     return
 
 
@@ -148,32 +143,6 @@ def read_board(csvfile):
     return rawboard
 
 
-GSite = namedtuple('GSite', 'wellsq goalsq')
-
-
-def drill_sites(goal_node):
-    """
-    goal node: a node next to a node that is a potential drill site.
-    Return a list of goal nodes on the path to this goal node, including this
-    node.
-    Each list entry is a tuple containing the node with wells and the node on
-    our path to stop at in order to drill there.
-
-    """
-    ret = []
-    node = goal_node
-    while node:
-        for n in node.adjacent:
-            if n.wells:
-                ret.append(GSite(n, node))
-        node = node.previous
-        # If the node has wells, we're not allowed to stop there.
-        while node and node.wells:
-            node = node.previous
-    print(repr(goal_node), ret)
-    return ret
-
-
 def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
     """
     :param graph: So we can clear it before updating its Nodes
@@ -196,12 +165,12 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
     graph.reset_graph()
     root.distance = 0
     unvisited_queue = [root]
-    visited = set()
+    visited = dict()  # Use a dictionary instead of a set to preserve order
     goals = set()
     while unvisited_queue:
         # Pops a vertex with the smallest distance
         current = heapq.heappop(unvisited_queue)
-        visited.add(current)
+        visited[current] = None
         if current.goal:
             goals.add(current)
         trace(3, 'current={} current.adjacent={}', current, current.adjacent)
@@ -261,6 +230,7 @@ def choose_goal(player: Player, graph: Graph) -> Node:
     visited, goals = dijkstra(graph, truck_node, maxcost, verbose=_args.verbose)
     # graph.print_board()
     # print(f'{visited=}')
+    # print(f'{set(visited)=}')
     # sys.exit()
     for node in visited:
         score = 0
@@ -300,35 +270,57 @@ def choose_goal(player: Player, graph: Graph) -> Node:
     return scores[-1][0]  # return the node with the highest score
 
 
-def time_dijkstra(graph):
+def build_oilrig(player: Player):
     """
-    Called if the --timeit command-line option is selected.
-    @param graph:
-    @return: None
+
+    @param player:
+    @return:
     """
-    t1 = time.time()
-    for _ in range(_args.timeit):
-        graph.reset_graph()
-        dijkstra(graph, graph.board[_args.row][_args.column],
-                 maxcost=_args.maxcost, verbose=_args.verbose)
-    t2 = time.time()
-    print(t2 - t1)
+    truck_node = player.truck_node
+    if not truck_node.goal or not player.free_oil_rigs:
+        return
+    sites = [n for n in truck_node.adjacent if n.wells and not n.derrick]
+    # Since node is a goal, at least one neighbor must have wells.
+    assert sites
+    # todo: Add heuristic for choosing site. For now just choose the first.
+    # then decide if we want to build based on how many sites we have, the
+    # position of our train, the price of oil, the availability of space in
+    # our tanks.
+    site: Node = sites[0]
+    cost = config.BUILDING_COST[site.wells]
+    if cost > player.cash:
+        return
+    player.cash -= cost
+    player.rigs_in_use.append(site)
+    player.free_oil_rigs -= 1
+    site.add_derrick()
 
 
-def one_dijkstra(graph):
-    """
-    Called if --dijkstra is selected on the command line.
-    @param graph:
-    @return: dict of drill sites on the path to our goal
-    """
-    goals = dijkstra(graph, graph.board[_args.row][_args.column],
-                     maxcost=_args.maxcost, verbose=_args.verbose)
-    # print(goals[1])
-    gsites = {g: drill_sites(g) for g in goals[1]}
-    if _verbose >= 2:
-        print(f'{goals=}')
-        print(f'{gsites=}')
-    return gsites
+def transport_oil(player: Player):
+
+    if not player.rigs_in_use:
+        return
+    exhausted_rigs = []
+    for node in player.rigs_in_use:
+        # Select the tank with least oil
+        leastmarkers = sys.maxsize
+        tank = None  # avoid pycharm warning
+        for tankn in range(config.NUMBER_OF_OIL_COMPANIES):
+            if (markers := player.storage_tanks[tankn]) < leastmarkers:
+                leastmarkers = markers
+                tank = tankn
+        # Move one oil marker to my tank at the selected oil company
+        assert node.oil_reserve > 0
+        player.storage_tanks[tank] += 1
+        node.oil_reserve -= 1
+        if node.oil_reserve == 0:
+            exhausted_rigs.append(node)
+    for node in exhausted_rigs:
+        player.rigs_in_use.remove(node)
+        player.free_oil_rigs += 1
+        node.remove_derrick()
+    trace(1, 'Action 6: rigs {}', [(repr(n), n.oil_reserve) for n in
+                                   player.rigs_in_use])
 
 
 def one_turn(turn: int, starting_player: Player, game: Game):
@@ -347,6 +339,8 @@ def one_turn(turn: int, starting_player: Player, game: Game):
     action_cards = []
     red_card = draw_card(game.red_action_cards, game.red_discards)
     action_cards.append(red_card)
+
+    # Action 2a: Move black train
     if game.move_black_train(red_card.black_loco):
         return True  # game ended
     for i in range(len(game.players)):
@@ -357,12 +351,13 @@ def one_turn(turn: int, starting_player: Player, game: Game):
     playern = starting_player.id
     playerlist = []
     for n in range(game.nplayers):
-        playerlist.append(playern)
+        playerlist.append(game.players[playern])
         playern += 1
         if playern >= game.nplayers:
             playern = 0
-    for playern in playerlist:
-        player = game.players[playern]
+    print(f'---\n{turn=}, {playerlist=}, {game.black_train_col=} '
+          f'selling price: {game.selling_price} ')
+    for player in playerlist:
 
         # todo: Heuristic needed to select the best action card.
         cardn = random.randrange(len(action_cards))
@@ -372,14 +367,12 @@ def one_turn(turn: int, starting_player: Player, game: Game):
             markers = red_card.markers
             backwards = red_card.backwards
             oilprice = 0
-            game.red_discards.append(red_card)
         else:  # Selected one of the beige cards
             card = action_cards[cardn]
             nlicenses = card.nlicenses
             movement = card.movement
             oilprice = card.oilprice
             markers = backwards = 0
-            game.beige_discards.append(card)
         del action_cards[cardn]
         player.set_actions(nlicenses, movement, markers, backwards, oilprice)
 
@@ -389,26 +382,41 @@ def one_turn(turn: int, starting_player: Player, game: Game):
 
     # Action 4 Move the truck and locomotive and do special actions
 
-    # 4a: Placing and moving trucks
-    print(f'{playerlist=}')
-    for playern in playerlist:
-        player: Player = game.players[playern]
+    for player in playerlist:
         nextnode: Node = choose_goal(player, game.graph)
-        print(f'{turn=}, {player=}, {player.truck_node=}, {player.actions=}, '
-              f'{nextnode=}')
+        print(f'{player=}, truck_node: {repr(player.truck_node)} —> '
+              f'{repr(nextnode)} {player.actions}, licenses: '
+              f'{player.nlicenses}, cash: ${player.cash}')
         # todo: Examine goal nodes en route to this node
+        # 4a: Placing and moving trucks
+        player.truck_node.truck = None
+        nextnode.truck = player
         player.truck_node = nextnode
+
         # 4b: Searching for Oil
+        # This is handled in choose_goal() which peeks at sites if allowed
 
         # 4c: Moving your own locomotive
         if nextnode.distance < player.actions.movement:
             player.advance_train(_verbose)
 
-        print(f'Action 4: {playern=}, {nextnode=}')
+        print(f'Action 4: traincol: {player.train_col}, '
+              f'goal: {nextnode.goal}, truck@{nextnode}')
+
+    # Action 5: Building Oilrigs
+    for player in playerlist:
+        build_oilrig(player)
 
     # Action 6: Drilling and transporting the oil
+    for player in playerlist:
+        transport_oil(player)
 
     # Action 7: Selling oil
+
+    # Discard action cards
+    game.red_discards.append(red_card)
+    for card in action_cards[1:]:
+        game.beige_discards.append(card)
 
     if _args.short:
         return True
@@ -425,7 +433,7 @@ def play_game(graph, seed):
             game_ended = one_turn(turn, game.players[playerid], game)
             if game_ended:
                 break
-        if turn >= 5:
+        if turn >= _args.turns:
             return
 
 
@@ -442,9 +450,9 @@ def main():
         print(f'{nrows=} {ncols=}'
               f'{" maxcost=" + (str(m) if m < sys.maxsize else "∞")}')
     if _args.timeit:
-        time_dijkstra(graph)
+        time_dijkstra(graph, dijkstra, _args)
     elif _args.dijkstra:
-        one_dijkstra(graph)
+        one_dijkstra(graph, dijkstra, _args, _verbose)
     else:
         play_game(graph, config.RANDOM_SEED)
     if _args.verbose >= 3:
@@ -490,8 +498,11 @@ def getargs():
     parser.add_argument('-s', '--short', action='store_true', help='''
     Stop after one turn.
     ''')
-    parser.add_argument('-t', '--timeit', type=int, help='''
+    parser.add_argument('--timeit', type=int, help='''
     Time the dijkstra function with this number of iterations.
+    ''')
+    parser.add_argument('-t', '--turns', type=int, default=sys.maxsize, help='''
+    Stop the game after this many turns.
     ''')
     parser.add_argument('-v', '--verbose', default=1, type=int, help='''
     Modify verbosity.

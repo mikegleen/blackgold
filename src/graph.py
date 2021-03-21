@@ -1,14 +1,11 @@
 """
 
 """
-import copy
 from colorama import Fore, Style
-import random
 import re
 import sys
 
 from node import Node
-import config
 
 LEFTWARDS_ARROW = '\u2190'
 UPWARDS_ARROW = '\u2191'
@@ -31,9 +28,6 @@ class Graph:
         three_players = nplayers == 3
         nrows = len(rawboard)
         ncols = len(rawboard[0])
-        tiles = copy.deepcopy(config.TILES)
-        for k in (1, 2, 3):
-            random.shuffle(tiles[k])
         board = [[Node(r, c) for c in range(ncols)] for r in range(nrows)]
         # nodes = np.array(nodes)
         for r, row in enumerate(board):
@@ -50,13 +44,6 @@ class Graph:
                 if m.group(3):  # if wells are specified
                     node.wells = 0 if (m.group(4) == 'x' and three_players
                                        ) else int(m.group(3))
-                    # Select a random tile from the shuffled list according
-                    # to the number of wells. Indicate that this is the amount
-                    # of oil underground.
-                    # Note: The oil reserve is re-initialized by play_game()
-                    #       but do it here too as the graph can be used outside
-                    #       of a game.
-                    node.oil_reserve = tiles[node.wells].pop()
                 # For testing, force a derrick
                 # print(node)
                 # print(f'{m.group(4)=}')
@@ -74,10 +61,15 @@ class Graph:
     def get_rows_cols(self):
         return self.rows, self.columns
 
-    def reset_distance(self):
+    def reset_graph(self):
+        """
+        Called by dijkstra() before each move.
+        @return:
+        """
         for node in self.graph:
             node.distance = sys.maxsize
             node.visited = False
+            node.previous = None
 
     def dump_board(self):
         print('Dump Board')
@@ -116,6 +108,8 @@ class Graph:
             return f'{dist:2d}' if dist < sys.maxsize else '  '
 
         def pr_wells(node):
+            if node.exhausted:
+                return 'X'
             return'D' if node.derrick else 'W'
 
         # self.board[4][13].derrick = True  # test feature
@@ -136,7 +130,10 @@ class Graph:
             return f'{dist:2d}' if dist < sys.maxsize else '  '
 
         def pr_wells(node):
-            return 'D' if node.derrick else 'w'
+            if node.exhausted:
+                return 'X  '
+            well = 'D' if node.derrick else 'w'
+            return well * node.wells + (' ' * (3 - node.wells))
 
         def from_arrow(node):
             if not (previous := node.previous):
@@ -153,7 +150,7 @@ class Graph:
             print('   ' + '|—————' * self.columns + '|')
             r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
             print(f' {nrow:02}|' + '|'.join(r1) + '|')
-            r2 = [(pr_wells(n) * n.wells) + (' ' * (3 - n.wells))
+            r2 = [pr_wells(n)
                   + from_arrow(n)
                   + (Graph.RED + str(n.goal) + Graph.RESET if n.goal else ' ')
                   for n in row]

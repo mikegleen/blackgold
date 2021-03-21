@@ -55,7 +55,9 @@ class Node:
         assert self.derrick is False
         self.derrick = True
         for node in self.adjacent:
-            assert node.goal > 0  # assume no adjacent cells with wells
+            # Assume there are no adjacent cells with wells which is true on
+            # the Giganten board.
+            assert node.goal > 0
             node.goal -= 1
 
     def remove_derrick(self):
@@ -80,9 +82,14 @@ class Node:
         self.col: int = col
         self.id: str = f'<{row},{col}>'
         self.terrain: int = 0
+        # wells: int in 0..3: the number of wells on the square. If non-zero
+        # the square is covered with a tile at the start of the game. Wells
+        # are assigned when the Graph is instantiated.
         self.wells: int = 0
         # oil_reserve: the number on the bottom side of the tile covering a
-        # square with well(s) or the number of plastic markers under a derrick
+        # square with well(s) or the number of plastic markers under a derrick.
+        # If wells == 2 then we cannot peek at the oil reserve in deciding
+        # whether to drill.
         self.oil_reserve: int = 0
         self.exhausted: bool = False
         self.goal: int = 0  # count of adjacent nodes with unbuilt wells
