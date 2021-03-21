@@ -163,3 +163,4 @@ dmypy.json
 data/*.pdf
 results/
 tmp/
+html/
