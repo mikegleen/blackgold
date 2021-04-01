@@ -1,8 +1,11 @@
 """
 
 """
+from __future__ import annotations
 import sys
-from typing import Union
+from typing import Union, TYPE_CHECKING
+if TYPE_CHECKING:  # kludge to avoid circular imports at run time
+    from player import Player
 
 
 class Node:
@@ -94,7 +97,7 @@ class Node:
         self.exhausted: bool = False
         self.goal: int = 0  # count of adjacent nodes with unbuilt wells
         self.derrick: bool = derrick
-        self.truck = None  # set when a truck moves to this node
+        self.truck: Union[Player, None] = None  # set when a truck moves here
         self.adjacent = []  # will be populated by set_neighbors
         self.cell = None  # this node's string from rawboard
 

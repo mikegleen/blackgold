@@ -2,9 +2,12 @@
 
 """
 import argparse
+from typing import NamedTuple
 import config
 import copy
 import heapq
+import inspect
+import os.path
 import random
 import sys
 from test.test_dijkstra import time_dijkstra, one_dijkstra
@@ -18,7 +21,9 @@ import oil_price
 
 def trace(level, template, *args):
     if _args.verbose >= level:
-        print(template.format(*args))
+        stack = inspect.stack()
+        fileinfo = f'{module_name}: {stack[1][2]}: {stack[1][3]}'
+        print(fileinfo, template.format(*args))
 
 
 class Game:
@@ -26,7 +31,7 @@ class Game:
         assert nplayers <= len(config.TRUCK_INIT_ROWS)
         self.nplayers = nplayers
         self.black_train_col = 0
-        self.selling_price: list[int] = [5000] * config.NUMBER_OF_OIL_COMPANIES
+        self.selling_price: list[int] = [5000] * config.NCOMPANIES
         self.players = []
         self.graph = graph
         for n in range(nplayers):
@@ -55,8 +60,6 @@ class Game:
     def move_black_train(self, spaces_to_move):
         self.black_train_col += spaces_to_move
         game_ended = self.black_train_col >= self.graph.columns
-        if game_ended:
-            print(f'Game ended. {self.black_train_col=}')
         return game_ended
 
 
@@ -305,7 +308,7 @@ def transport_oil(player: Player):
         # Select the tank with least oil
         leastmarkers = sys.maxsize
         tank = None  # avoid pycharm warning
-        for tankn in range(config.NUMBER_OF_OIL_COMPANIES):
+        for tankn in range(config.NCOMPANIES):
             if (markers := player.storage_tanks[tankn]) < leastmarkers:
                 leastmarkers = markers
                 tank = tankn
@@ -319,20 +322,137 @@ def transport_oil(player: Player):
         player.rigs_in_use.remove(node)
         player.free_oil_rigs += 1
         node.remove_derrick()
-    trace(1, 'Action 6: rigs {}', [(repr(n), n.oil_reserve) for n in
-                                   player.rigs_in_use])
+    trace(2, 'Action 6: player {}, rigs {}', player.id,
+          [(repr(n), n.oil_reserve) for n in player.rigs_in_use])
 
 
-def one_turn(turn: int, starting_player: Player, game: Game):
+def surrender_licenses(player: Player, required: int, game: Game):
+    """
+    @param player:
+    @param required: Number of licenses required
+    @param game:
+    @return:
+    """
+
+    def one_license(licenses):
+        license_card = licenses.pop()
+        game.license_discards.append(license_card)
+
+    total_surrendered = required
+    if required % 2 == 1:  # if odd number of licenses needed
+        if player.single_licenses:
+            one_license(player.single_licenses)
+            required -= 1
+        else:
+            # There are no single licenses so must use a double card
+            required += 1
+            total_surrendered += 1
+    assert player.nlicenses >= required
+    # dv: the value of the licenses on the double license cards
+    if (dv := len(player.double_licenses) * 2) >= required:
+        for n in range(required // 2):
+            one_license(player.double_licenses)
+    else:
+        while player.double_licenses:
+            one_license(player.double_licenses)
+        required -= dv
+        # still need some from the single pile
+        for n in range(required):
+            one_license(player.single_licenses)
+    player.nlicenses -= total_surrendered
+    assert player.nlicenses == (len(player.single_licenses)
+                                + 2 * len(player.double_licenses))
+
+
+def sell_oil(company: int, game: Game, player_list: list[Player]):
+    """
+    This isn't like a normal auction where bids are made in turn. Here, each
+    player names their maximum bid and the highest bidder pays 1 more than
+    the next highest. The exception is if there is a tie, then the winner
+    pays the amount bid. If there is a tie, the winner is the first player
+    in the list, which starts with the current player.
+    testing: if # of players == 1, next highest bid is zero, so the number of
+    licenses bid will always be 1.
+
+    @param company:
+    @param game:
+    @param player_list:
+    @return:
+    """
+    def compute_bid():
+        """
+        Compute the maximum bid for a player. Things to consider:
+        # of licenses I have
+        # of oil units in the oil tank at all companies
+        current selling price
+
+        If there are more than 2 units in this oil tank, I will have to sell
+        them for $1000.
+
+        @return:
+        """
+        # Heuristic: my max bid is the percent of my licenses corresponding to
+        # the percent profit to be made by selling at this company.
+        licenses = player.nlicenses
+        profit = [game.selling_price[c] * player.storage_tanks[c]
+                  for c in range(config.NCOMPANIES)]
+        tot_profit = sum(profit[company:])  # only look at companies in play
+        if tot_profit != 0:
+            mybid = licenses * profit[company] // tot_profit
+        else:
+            mybid = None
+        return mybid
+
+    Bid = NamedTuple('Bid', [('player', Player), ('value', int)])
+    bids: list = []
+    for player in player_list:
+        bid = Bid(player, compute_bid())
+        trace(2, 'Sell Oil, player {}, single/double licenses: {}/{}, '
+                 'total: {} bid: {}, company: {}, price: ${}',
+              player.id, len(player.single_licenses),
+              len(player.double_licenses), player.nlicenses, bid.value,
+              company, game.selling_price[company])
+        if bid.value:
+            bids.append(bid)
+    # Find the highest bid (tie goes to first found)
+    highest = 0
+    winner = None
+    for bid in bids:
+        if bid.value > highest:
+            winner = bid
+            highest = bid.value
+    # The winner pays 1 more than the next highest bidder
+    if winner:
+        player = winner.player
+        bids.remove(winner)
+        next_highest = 0
+        for bid in bids:
+            if bid.value > next_highest:
+                next_highest = bid.value
+        if highest > next_highest:
+            next_highest += 1
+        surrender_licenses(player, next_highest, game)
+        # Get paid
+        oil_units = player.storage_tanks[company]
+        price = (game.selling_price[company] * oil_units)
+        trace(2, '    player {} sells {} units to company {} for ${}',
+              player.id, oil_units, company, price)
+        trace(2, '     licenses used: {}, {} remaining ', next_highest,
+              player.nlicenses)
+        player.cash += price
+        player.storage_tanks[company] = 0
+
+
+def one_turn(turn: int, playerlist: list[Player], game: Game):
     """
     @param turn: for debug
-    @param starting_player:
+    @param playerlist:
     @param game:
     @return: True if game ended else None
     """
 
     # Action 1: Change the selling price
-    for company in range(config.NUMBER_OF_OIL_COMPANIES):
+    for company in range(config.NCOMPANIES):
         oil_price.set_price(game.selling_price, company)
 
     # Action 2: Take action cards
@@ -348,31 +468,28 @@ def one_turn(turn: int, starting_player: Player, game: Game):
         action_cards.append(beige_card)
 
     # Each player selects one action card, starting with starting_player
-    playern = starting_player.id
-    playerlist = []
-    for n in range(game.nplayers):
-        playerlist.append(game.players[playern])
-        playern += 1
-        if playern >= game.nplayers:
-            playern = 0
-    print(f'---\n{turn=}, {playerlist=}, {game.black_train_col=} '
-          f'selling price: {game.selling_price} ')
+    trace(1, 'Turn: {}, players {}, price: {}, black train col: {} ',
+          turn, playerlist, game.selling_price, game.black_train_col)
     for player in playerlist:
 
         # todo: Heuristic needed to select the best action card.
         cardn = random.randrange(len(action_cards))
-        if cardn == 0:  # Selected the red card
+        card = action_cards[cardn]
+
+        if type(card) == config.RedActionCard:  # Selected the red card
             nlicenses = red_card.nlicenses
             movement = red_card.movement
             markers = red_card.markers
             backwards = red_card.backwards
             oilprice = 0
+            game.red_discards.append(card)
         else:  # Selected one of the beige cards
             card = action_cards[cardn]
             nlicenses = card.nlicenses
             movement = card.movement
             oilprice = card.oilprice
             markers = backwards = 0
+            game.beige_discards.append(card)
         del action_cards[cardn]
         player.set_actions(nlicenses, movement, markers, backwards, oilprice)
 
@@ -384,14 +501,16 @@ def one_turn(turn: int, starting_player: Player, game: Game):
 
     for player in playerlist:
         nextnode: Node = choose_goal(player, game.graph)
-        print(f'{player=}, truck_node: {repr(player.truck_node)} —> '
-              f'{repr(nextnode)} {player.actions}, licenses: '
-              f'{player.nlicenses}, cash: ${player.cash}')
+        trace(2, 'Action 4: player {}, truck_node: {} —> {} {}, licenses: '
+              '{}, cash: ${}',
+              player, repr(player.truck_node), repr(nextnode),
+              player.actions, player.nlicenses, player.cash)
         # todo: Examine goal nodes en route to this node
         # 4a: Placing and moving trucks
         player.truck_node.truck = None
         nextnode.truck = player
         player.truck_node = nextnode
+        player.truck_hist.append(nextnode)
 
         # 4b: Searching for Oil
         # This is handled in choose_goal() which peeks at sites if allowed
@@ -400,8 +519,8 @@ def one_turn(turn: int, starting_player: Player, game: Game):
         if nextnode.distance < player.actions.movement:
             player.advance_train(_verbose)
 
-        print(f'Action 4: traincol: {player.train_col}, '
-              f'goal: {nextnode.goal}, truck@{nextnode}')
+        trace(2, '          traincol: {}, goal: {}, truck@{}',
+              player.train_col, nextnode.goal, nextnode)
 
     # Action 5: Building Oilrigs
     for player in playerlist:
@@ -412,14 +531,67 @@ def one_turn(turn: int, starting_player: Player, game: Game):
         transport_oil(player)
 
     # Action 7: Selling oil
+    for company in range(config.NCOMPANIES):
+        sell_oil(company, game, playerlist)
 
-    # Discard action cards
-    game.red_discards.append(red_card)
-    for card in action_cards[1:]:
-        game.beige_discards.append(card)
+    # Action 8: Storage tank limitations
+    for player in playerlist:
+        storage_tanks: list = player.storage_tanks
+        for n in range(len(storage_tanks)):
+            if storage_tanks[n] > 2:
+                units_to_sell = storage_tanks[n] - 2
+                storage_tanks[n] = 2
+                player.cash += units_to_sell * config.FORCED_SALE_PRICE
 
+    # Discard unused action cards
+    for card in action_cards:
+        if type(card) == config.RedActionCard:  # Selected the red card
+            game.red_discards.append(card)
+        else:
+            game.beige_discards.append(card)
+    trace(1, 'beige cards/discards: {}/{}', len(game.beige_action_cards),
+          len(game.beige_discards))
     if _args.short:
         return True
+
+
+def compute_score(playerlist: list[Player]):
+    """
+    Award money to players based on the number of oil rigs on the board.
+    Determine the price paid based on a score, $5k, $4k, $3k, $2k paid to
+    players in descending order according to the following:
+    1. The most significant decider is the placement of the player's loco.
+       The furthest along (to the right) is the highest score.
+    2. If there is a tie, then the player with the highest number of existing
+       licenses is the highest.
+    3. If still a tie, the player closest to the starting player wins.
+
+
+    @param playerlist:
+    @return:
+    """
+    loco_order = []
+    playerorder = len(playerlist)
+    for player in playerlist:
+        playerorder -= 1  # starting player gets the highest score and so on
+        loco_order.append((player.train_col, player.nlicenses, playerorder,
+                           player))
+    loco_order.sort(reverse=True)
+    pricex = 0
+    for _, _, _, player in loco_order:
+        price = config.GAME_END_RIG_PRICE[pricex]
+        pricex += 1
+        rigs = len(player.rigs_in_use)
+        player.cash += price * rigs
+        # Count oil markers
+        oil_reserve = 0
+        for node in player.rigs_in_use:
+            oil_reserve += node.oil_reserve
+        for tank in player.storage_tanks:
+            oil_reserve += tank
+        player.cash += config.GAME_END_MARKER_PRICE * oil_reserve
+        trace(1, 'player {}: rigs: {}, oil reserve: {}, train col: {}, cash: ${}', player.id,
+              rigs, oil_reserve, player.train_col, player.cash)
 
 
 def play_game(graph, seed):
@@ -429,9 +601,21 @@ def play_game(graph, seed):
     turn = 0
     while not game_ended:
         turn += 1
-        for playerid in range(_nplayers):
-            game_ended = one_turn(turn, game.players[playerid], game)
+        for starting_player in game.players:
+            playern = starting_player.id
+            playerlist = []
+            for n in range(game.nplayers):
+                playerlist.append(game.players[playern])
+                playern += 1
+                if playern >= game.nplayers:
+                    playern = 0
+            game_ended = one_turn(turn, playerlist, game)
             if game_ended:
+                print(f'Game ended. {game.black_train_col=}')
+                compute_score(playerlist)
+                for player in game.players:
+                    trace(1, 'Player {} cash = ${}, path = {}',
+                          player.id, player.cash, player.truck_hist)
                 break
         if turn >= _args.turns:
             return
@@ -448,7 +632,7 @@ def main():
     if _verbose >= 1:
         m = _args.maxcost
         print(f'{nrows=} {ncols=}'
-              f'{" maxcost=" + (str(m) if m < sys.maxsize else "∞")}')
+              f' maxcost: {str(m) if m < sys.maxsize else "∞"}')
     if _args.timeit:
         time_dijkstra(graph, dijkstra, _args)
     elif _args.dijkstra:
@@ -514,6 +698,7 @@ def getargs():
 
 
 if __name__ == '__main__':
+    module_name = os.path.basename(__file__)
     assert sys.version_info >= (3, 8)
     _args = getargs()
     _maxcost = _args.maxcost

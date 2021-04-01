@@ -31,15 +31,19 @@ INITIAL_OIL_RIGS = 5
 # the rows in the first column to place the trucks at the start of the game
 TRUCK_INIT_ROWS = [1, 5, 7, 9]
 
-NUMBER_OF_OIL_COMPANIES = 3
+NCOMPANIES = 3
 
-# After Action 7, Selling Oil, any crude markers in storage tanks must be sold
-# to the bank for $1000 each.
+# For Action 8, Storage Tank Limitations, any crude markers in storage tanks
+# above the limit must be sold to the bank for $1000 each.
 STORAGE_TANK_LIMIT = 2
+FORCED_SALE_PRICE = 1000
 
 # Cost to build a derrick. The index is the number of wells on a site.
 BUILDING_COST = [0, 4000, 6000, 8000]
 
+# The price paid for oilrigs at the end of the game
+GAME_END_RIG_PRICE = (5000, 4000, 3000, 2000)
+GAME_END_MARKER_PRICE = 1000
 """
     Define the contents of the red card deck.
 
