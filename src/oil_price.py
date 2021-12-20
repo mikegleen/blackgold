@@ -2,7 +2,7 @@
 This program compares two rules for adjusting the price of oil in Giganten.
 
 Rule 1 is the standard as defined in the game rules.
-    You role a die with numbers 2, 3, and 4, each in blue and red.
+    You roll a die with numbers 2, 3, and 4, each in blue and red.
     If the old price is in the red zone, then ignore the die color and increase
         the price according to the number thrown.
     Similarly, if the old price is in the blue zone, decreased it.

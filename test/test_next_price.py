@@ -14,5 +14,6 @@ TESTCASES = (
 
 )
 
+
 class TestNextPrice(unittest.TestCase):
     longMessage = True
