@@ -10,9 +10,9 @@ import inspect
 import os.path
 import random
 import sys
+import time
+
 from test.test_dijkstra import time_dijkstra, one_dijkstra
-
-
 from node import Node
 from graph import Graph
 from player import Player
@@ -176,24 +176,24 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
         visited[current] = None
         if current.goal:
             goals.add(current)
-        trace(3, 'current={} current.adjacent={}', current, current.adjacent)
+        # trace(3, 'current={} current.adjacent={}', current, current.adjacent)
         if current.distance >= maxcost:
             trace(3, '    stopping at distance {}.', current.distance)
             continue
         for nextn in sorted(current.adjacent):  # iterate over adjacent nodes
-            trace(3, 'nextn={} {}', nextn, "DERRICK" if nextn.derrick else "")
+            # trace(3, 'nextn={} {}', nextn, "DERRICK" if nextn.derrick else "")
             if nextn in visited:  # if visited, skip
-                trace(3, 'skipping, visited: nextn={}', nextn)
+                # trace(3, 'skipping, visited: nextn={}', nextn)
                 continue
             if nextn.derrick or nextn.truck:
-                trace(3, 'skipping, derrick or truck: nextn={}', nextn)
+                # trace(3, 'skipping, derrick or truck: nextn={}', nextn)
                 continue
             new_dist = current.distance + nextn.terrain
             nextn_dist = nextn.distance
             #
             # If the next node has wells, the player may not stop there.
             if nextn.wells and new_dist >= maxcost:
-                trace(3, 'skipping, wells: nextn={}', nextn)
+                # trace(3, 'skipping, wells: nextn={}', nextn)
                 continue
             if new_dist < nextn_dist and new_dist <= maxcost:
                 nextn.distance = new_dist
@@ -207,7 +207,7 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
                 #       % (updated, current.id, nextn.id, nextn_dist))
                 print(f'{updated}: current: {current.id}, next: {nextn.id}, '
                       f'dist: {idist(nextn_dist)} -> {nextn.distance}')
-        trace(3, 'unvisited: {}', unvisited_queue)
+        # trace(3, 'unvisited: {}', unvisited_queue)
     # Convert the set of goals into a list sorted by column
     # goals = sorted(list(goals), key=lambda node: node.col, reverse=True)
     return visited, goals
@@ -468,7 +468,7 @@ def one_turn(turn: int, playerlist: list[Player], game: Game):
         action_cards.append(beige_card)
 
     # Each player selects one action card, starting with starting_player
-    trace(1, 'Turn: {}, players {}, price: {}, black train col: {} ',
+    trace(config.TR_ACTION_CARDS, 'Turn: {}, players {}, price: {}, black train col: {} ',
           turn, playerlist, game.selling_price, game.black_train_col)
     for player in playerlist:
 
@@ -549,7 +549,7 @@ def one_turn(turn: int, playerlist: list[Player], game: Game):
             game.red_discards.append(card)
         else:
             game.beige_discards.append(card)
-    trace(1, 'beige cards/discards: {}/{}', len(game.beige_action_cards),
+    trace(config.TR_ACTION_CARDS, 'beige cards/discards: {}/{}', len(game.beige_action_cards),
           len(game.beige_discards))
     if _args.short:
         return True
@@ -590,15 +590,17 @@ def compute_score(playerlist: list[Player]):
         for tank in player.storage_tanks:
             oil_reserve += tank
         player.cash += config.GAME_END_MARKER_PRICE * oil_reserve
-        trace(1, 'player {}: rigs: {}, oil reserve: {}, train col: {}, cash: ${}', player.id,
+        trace(config.TR_COMPUTE_SCORE,
+              'player {}: rigs: {}, oil reserve: {}, '
+              'train col: {}, cash: ${}', player.id,
               rigs, oil_reserve, player.train_col, player.cash)
 
 
-def play_game(graph, seed):
-    random.seed(seed)
-    game = Game(graph, _nplayers)
+def play_game(graph, game):
     game_ended = False
     turn = 0
+    playerlist = []
+    starttime = time.process_time()
     while not game_ended:
         turn += 1
         for starting_player in game.players:
@@ -611,14 +613,22 @@ def play_game(graph, seed):
                     playern = 0
             game_ended = one_turn(turn, playerlist, game)
             if game_ended:
-                print(f'Game ended. {game.black_train_col=}')
-                compute_score(playerlist)
-                for player in game.players:
-                    trace(1, 'Player {} cash = ${}, path = {}',
-                          player.id, player.cash, player.truck_hist)
                 break
         if turn >= _args.turns:
             return
+    elapsed = time.process_time() - starttime
+    compute_score(playerlist)
+    scores = [p.cash for p in game.players]
+    max_score = max(scores)
+    winners = [p for p, score in enumerate(scores) if score == max_score]
+    trace(config.TR_FINAL_PATH,
+          f'Game ended. Elapsed: {elapsed:5.4f} seconds, '
+          f'{game.black_train_col=}, {winners=}')
+    for player in game.players:
+        trace(config.TR_FINAL_PATH,
+              'Player {} cash = ${}, path = {}',
+              player.id, player.cash, player.truck_hist)
+    return winners
 
 
 def main():
@@ -638,7 +648,21 @@ def main():
     elif _args.dijkstra:
         one_dijkstra(graph, dijkstra, _args, _verbose)
     else:
-        play_game(graph, config.RANDOM_SEED)
+        winners = [0 for n in range(_args.nplayers)]
+        ties = 0
+        random.seed(config.RANDOM_SEED)
+        starttime = time.process_time()
+        for ngame in range(_args.games):
+            graph = Graph(rawboard, _args.nplayers)
+            game = Game(graph, _nplayers)
+            winnerlist = play_game(graph, game)
+            for w in winnerlist:
+                winners[w] += 1
+            if len(winnerlist) > 1:
+                ties += 1
+            # print(f'{winnerlist=}')
+        elapsed = time.process_time() - starttime
+        print(f'{ties=}, {winners=}, {elapsed=:6.3f}')
     if _args.verbose >= 3:
         graph.dump_board()
     # print(board)
@@ -662,6 +686,10 @@ def getargs():
     parser.add_argument('--dumprawboard', help='''
     Specify the file to dump the raw board to. Useful if the input is by
     columns. The output raw board is by rows.
+    ''')
+    parser.add_argument('-g', '--games', type=int, default=1,
+                        help='''
+    Number of games to play.
     ''')
     parser.add_argument('-k', '--dijkstra', action='store_true', help='''
     Do one run of dijkstra. Implies -p. For testing.

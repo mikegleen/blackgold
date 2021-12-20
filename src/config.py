@@ -113,7 +113,7 @@ BEIGE_ACTION_CARDS = [
 LicenseCard = namedtuple('LicenseCard', 'num_licenses')
 LICENSE_CARDS = [LicenseCard(1)] * 39 + [LicenseCard(2)] * 39
 
-RANDOM_SEED = 33
+RANDOM_SEED = None
 
 """
     Heuristics for choosing a truck destination
@@ -122,3 +122,10 @@ GOAL_MULTIPLIER = 2
 TRUCK_COLUMN_MULTIPLIER = 1
 PREV_GOAL_MULTIPLER = 1
 TRAIN_COLUMN_MULTIPLIER = 1
+
+"""
+    Define trace levels
+"""
+TR_ACTION_CARDS = 2
+TR_COMPUTE_SCORE = 2
+TR_FINAL_PATH = 2

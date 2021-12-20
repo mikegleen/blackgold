@@ -11,7 +11,7 @@ if TYPE_CHECKING:  # kludge to avoid circular imports at run time
 class Node:
     """
     cost: Number of movement points it costs to enter this node.
-    exhausted: True if a derrick has been built and all of the oil has been extracted.
+    exhausted: True if a derrick has been built and all the oil has been extracted.
     goal: Number of adjacent cells with wells. Decremented if a derrick is built
     """
 

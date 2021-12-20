@@ -1,6 +1,8 @@
 
 if __name__ == '__main__':
     """
+        Helper script to convert the manually-entered action card data
+        to Python executable text.
         Create a temporary beige.py file with a reformated beige.csv.
         Manually copy beige.py into this file, replacing beige_action_cards.
     """

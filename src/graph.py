@@ -21,6 +21,11 @@ class Graph:
     YELLOW = Fore.YELLOW
     RED = Fore.RED
     RESET = Style.RESET_ALL
+    """
+    TERRAIN_CH is indexed by terrain type. Zero is illegal. Types 1, 2, and 3
+    refer to flat, hilly, or mountain and correspond to the cost of moving into
+    that square.
+    """
     TERRAIN_CH = ('@', GREEN + '—  ' + RESET, GREEN + '~~ ' + RESET,
                   GREEN + '^^^' + RESET)
 
@@ -113,7 +118,8 @@ class Graph:
             return'D' if node.derrick else 'W'
 
         # self.board[4][13].derrick = True  # test feature
-        print('   ' + ''.join([f'| {n:02} ' for n in range(self.columns)]) + '|')
+        print('   ' + ''.join([f'| {n:02} ' for n in range(self.columns)])
+              + '|')
         for nrow, row in enumerate(self.board):
             print('   ' + '|————' * self.columns + '|')
             r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]
@@ -145,7 +151,8 @@ class Graph:
                 return (UPWARDS_ARROW if node.row > previous.row else
                         DOWNWARDS_ARROW)
 
-        print('   ' + ''.join([f'| {n:03d} ' for n in range(self.columns)]) + '|')
+        print('   ' + ''.join([f'| {n:03d} ' for n in range(self.columns)])
+              + '|')
         for nrow, row in enumerate(self.board):
             print('   ' + '|—————' * self.columns + '|')
             r1 = [Graph.TERRAIN_CH[n.terrain] + pr_dist(n) for n in row]

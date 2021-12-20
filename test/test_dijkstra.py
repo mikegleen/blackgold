@@ -35,15 +35,26 @@ def time_dijkstra(graph, dijkstra, _args):
     """
     Called if the --timeit command-line option is selected.
     @param graph:
+    @param dijkstra: function to call
     @return: None
     """
+    t0 = time.time()
+    for _ in range(_args.timeit):
+        graph.reset_graph()
     t1 = time.time()
     for _ in range(_args.timeit):
         graph.reset_graph()
         dijkstra(graph, graph.board[_args.row][_args.column],
                  maxcost=_args.maxcost, verbose=_args.verbose)
     t2 = time.time()
-    print(t2 - t1)
+    reset_time = t1 - t0
+    elapsed = t2 - t1
+    elapsed_dijkstra = elapsed - reset_time
+    ms_per_iteration = elapsed_dijkstra * 1000. / _args.timeit
+    print(f'{_args.timeit} iterations.')
+    print(f'Total elapsed: {elapsed:4.3f} seconds')
+    print(f'Total reset time: {reset_time:4.3f} seconds')
+    print(f'Time per iteration: {ms_per_iteration:6.2} MS')
 
 
 def one_dijkstra(graph, dijkstra, _args, _verbose):
