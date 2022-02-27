@@ -10,6 +10,8 @@ if __name__ == '__main__':
     beigepy = open('src/beige.py', 'w')
     print('BEIGE_ACTION_CARDS = (', file=beigepy)
     for card in beigecsv:
+        if card.startswith('#'):
+            continue
         c = card.split()
         if len(c) == 2:
             c += [0]
