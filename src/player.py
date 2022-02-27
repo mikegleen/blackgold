@@ -15,7 +15,7 @@ class Player:
     def __init__(self, playerid: int, truck_node: node.Node):
         self.id: int = playerid
         self.truck_node: node.Node = truck_node
-        self.truck_hist: list[node.Node] = [truck_node]
+        self.truck_hist: list[str] = [str(truck_node)]
         self.train_col = 0
         self.free_oil_rigs: int = config.INITIAL_OIL_RIGS
         self.rigs_in_use: list[node.Node] = []
@@ -35,17 +35,17 @@ class Player:
         We've already moved the truck. If any movement points are left, advance
         the train.
         """
-        movement = self.actions.movement  # from action card just drawn
-        if verbos >= 2:
-            print(f'advance_train: player {self.id}, {movement=}, '
-                  f'train_col = {self.train_col}, '
-                  f'truck dist = {self.truck_node.distance}')
+        old_movement = movement = self.actions.movement  # from action card just drawn
+        old_train_col = self.train_col
         movement -= self.truck_node.distance
+        # needed: cost to move to next column increases as we advance
         while (needed := config.TRAIN_COSTS[self.train_col + 1]) <= movement:
             movement -= needed
             self.train_col += 1
-            if verbos >= 2:
-                print(f'              -train_col={self.train_col}')
+        if verbos >= 2:
+            print(f'advance_train: player {self.id}, movement: {old_movement}->'
+                  f'{movement}, train_col {old_train_col} -> {self.train_col}, '
+                  f'truck dist = {self.truck_node.distance}')
 
     def __repr__(self):
         s = f'{self.id}'

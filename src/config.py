@@ -28,6 +28,7 @@ TRAIN_COSTS = [0] + [1] * 9 + [2] * 7 + [3] * 3 + [sys.maxsize]
 INITIAL_CASH = 15_000
 INITIAL_PRICE = 5000
 INITIAL_OIL_RIGS = 5
+INITIAL_OIL_MARKERS = 60
 # the rows in the first column to place the trucks at the start of the game
 TRUCK_INIT_ROWS = [1, 5, 7, 9]
 
@@ -40,6 +41,9 @@ FORCED_SALE_PRICE = 1000
 
 # Cost to build a derrick. The index is the number of wells on a site.
 BUILDING_COST = [0, 4000, 6000, 8000]
+
+# Cost to transport oil on the black train or on an opponent's train
+TRANSPORT_COST = 3000
 
 # The price paid for oilrigs at the end of the game
 GAME_END_RIG_PRICE = (5000, 4000, 3000, 2000)
@@ -112,7 +116,7 @@ BEIGE_ACTION_CARDS = [
 ]
 LicenseCard = namedtuple('LicenseCard', 'num_licenses')
 LICENSE_CARDS = [LicenseCard(1)] * 39 + [LicenseCard(2)] * 39
-
+TOTAL_LICENSES = 117  # 39 + 39 * 2
 RANDOM_SEED = None
 
 """

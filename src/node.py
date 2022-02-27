@@ -24,7 +24,7 @@ class Node:
         adjacent contains a list of nodes next to this node.
         A node can have up to 4 adjacent, reduced if it is on an edge.
 
-        :return: None. The adjacent list in all nodes are set.
+        :return: None. The adjacent list in this node is set.
         """
 
         def set1neighbor(nrow, ncol):
@@ -96,6 +96,7 @@ class Node:
         self.oil_reserve: int = 0
         self.exhausted: bool = False
         self.goal: int = 0  # count of adjacent nodes with unbuilt wells
+        self.goal_reached: bool = False
         self.derrick: bool = derrick
         self.truck: Union[Player, None] = None  # set when a truck moves here
         self.adjacent = []  # will be populated by set_neighbors
@@ -105,7 +106,7 @@ class Node:
         self.distance: int = sys.maxsize
         self.previous: Union[Node, None] = None  # will be set when visited
 
-    def __str__(self):
+    def __repr__(self):
         e = 'T' if self.exhausted else 'F'
         g = self.goal
         t = self.truck
@@ -119,13 +120,14 @@ class Node:
         s = f'{self.id} t: {self.terrain}, '
         s += f'w: {self.wells} '
         s += f'ex={e}, goal={g}, derrick={d}, truck={t}, '
-        s += f'previous={repr(self.previous)}, '
+        s += f'previous={self.previous}, '
         s += f'dist: {"∞" if self.distance == sys.maxsize else self.distance}, '
-        s += f'adjacent: {sorted(self.adjacent)}'
+        sa = sorted(self.adjacent)
+        s += f'adjacent: {(ss.id for ss in sa)}'
         return s
 
-    def __repr__(self):
-        s = f'{self.id}'
+    def __str__(self):
+        s = f'{self.id}{"*" if self.goal_reached else ""}'
         return s
 
     # Needed by heapq

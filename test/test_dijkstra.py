@@ -27,7 +27,7 @@ def goals_on_path(goal_node):
         # If the node has wells, we're not allowed to stop there.
         while node and node.wells:
             node = node.previous
-    print(repr(goal_node), ret)
+    # print('goals_on_path:', repr(goal_node), ret)
     return ret
 
 
@@ -36,6 +36,7 @@ def time_dijkstra(graph, dijkstra, _args):
     Called if the --timeit command-line option is selected.
     @param graph:
     @param dijkstra: function to call
+    @param _args: argparse args
     @return: None
     """
     t0 = time.time()

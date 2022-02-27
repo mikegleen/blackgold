@@ -22,7 +22,8 @@ import oil_price
 def trace(level, template, *args):
     if _args.verbose >= level:
         stack = inspect.stack()
-        fileinfo = f'{module_name}: {stack[1][2]}: {stack[1][3]}'
+        # fileinfo = f'{module_name}: {stack[1][2]}: {stack[1][3]}'
+        fileinfo = f'{stack[1][2]}: {stack[1][3]}'
         print(fileinfo, template.format(*args))
 
 
@@ -34,6 +35,7 @@ class Game:
         self.selling_price: list[int] = [5000] * config.NCOMPANIES
         self.players = []
         self.graph = graph
+        self.oil_marker_stockpile = config.INITIAL_OIL_MARKERS
         for n in range(nplayers):
             trucknode: Node = graph.board[config.TRUCK_INIT_ROWS[n]][0]
             player = Player(n, trucknode)
@@ -54,7 +56,9 @@ class Game:
             # of oil underground.
             node.oil_reserve = tiles[node.wells].pop() if node.wells else 0
         self.licenses = copy.deepcopy(config.LICENSE_CARDS)
+        # print(f'\n{self.licenses=}')
         self.license_discards = []
+        self.licenses_exhausted = False
         random.shuffle(self.licenses)
 
     def move_black_train(self, spaces_to_move):
@@ -62,11 +66,26 @@ class Game:
         game_ended = self.black_train_col >= self.graph.columns
         return game_ended
 
+    def audit_licenses(self):
+        licenses = 0
+        for player in self.players:
+            for card in player.single_licenses:
+                assert card.num_licenses == 1
+                licenses += 1
+            for card in player.double_licenses:
+                assert card.num_licenses == 2
+                licenses += 2
+        for card in self.licenses:
+            licenses += card.num_licenses
+        for card in self.license_discards:
+            licenses += card.num_licenses
+        assert licenses == config.TOTAL_LICENSES
+
 
 def draw_card(cards, discards):
     """
-    @param cards: 
-    @param discards: 
+    @param cards:
+    @param discards:
     @return: The drawn card
     """
     try:
@@ -75,39 +94,52 @@ def draw_card(cards, discards):
         while discards:
             card = discards.pop()
             cards.append(card)
-        random.shuffle(cards)
-        card = cards.pop()
+        if cards:
+            random.shuffle(cards)
+            card = cards.pop()
+        else:
+            card = None
     return card
 
 
-def deal_licenses(player: Player, cards: list[config.LicenseCard],
-                  discards: list[config.LicenseCard]):
+def deal_licenses(player: Player, game: Game):
     """
     A license card can have either one or two licenses. Accumulate .
     @param player:
-    @param cards:
-    @param discards:
-    @return: the number of single-license cards and the number of
-             double-license cards followed by the updated lists
+    @param game:
+    @return: None. The player's number of licenses is updated.
     """
-    # print(f'deal_licenses: {len(cards)=}, {len(discards)=}')
+    cards, discards = game.licenses, game.license_discards
+    # oldnlicenses = player.nlicenses
+    # oldlencards = len(cards)
+    # oldlendiscards = len(discards)
     for n in range(player.actions.nlicenses):
         card: config.LicenseCard = draw_card(cards, discards)
+        if card is None:
+            if not game.licenses_exhausted:
+                game.licenses_exhausted = True
+                trace(2, 'Licenses exhausted')
+            break
         if card.num_licenses == 1:
             player.single_licenses.append(card)
         else:
             player.double_licenses.append(card)
     player.nlicenses = (len(player.single_licenses)
                         + 2 * len(player.double_licenses))
+    # print(f'deal_licenses: {player.id=} licenses:{oldnlicenses}->{player.nlicenses} cards:{oldlencards}->{len(cards)}, '
+    #       f'discards: {oldlendiscards}->{len(discards)}')
     return
 
 
 def read_board(csvfile):
     """
+    :param: csvfile: The file containing the board as described above.
+    :return: A list of rows containing tuples corresponding to the columns.
+             Each cell is the string as defined above.
     Each line in the csv file describes one row or one column of the board,
     depending on argument --bycols.
     Lines beginning with '#' and blank lines are ignored.
-    Each cell contains:
+    Cells are separated by whitespace. Each cell contains:
 
         <cell> ::= <terrain> | <terrain> "." <oilwell> | "." <oilwell>
         <terrain> ::= 1 | 2 | 3
@@ -119,9 +151,6 @@ def read_board(csvfile):
     If <variant> == "x" then this is a cell ignored for 3-person games.
     If <variant> == "d" then this cell contains a derrick (used for testing).
 
-    :param csvfile: The file containing the board as described above.
-    :return: A list of rows containing tuples corresponding to the columns.
-             Each cell is the string as defined above.
     """
     r = []  # rows
     nrows = 0
@@ -138,21 +167,23 @@ def read_board(csvfile):
         r.append(c)
     if _args.bycols:
         # Invert the array giving a list of tuples where each tuple is one row.
+        # Note zip returns an iterable so call list() to expand it.
         rawboard = list(zip(*r))
     else:
         rawboard = r
-    if _args.verbose >= 2:
-        print('rawboard:', rawboard)
+    # if _args.verbose >= 2:
+    #     print('rawboard:', rawboard)
+    trace(3, '{}', rawboard)
     return rawboard
 
 
 def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
     """
-    :param graph: So we can clear it before updating its Nodes
-    :param root: the Node to start from. The Nodes have been initialized
+    :param: graph: So we can clear it before updating its Nodes
+    :param: root: the Node to start from. The Nodes have been initialized
              during the creation of the Graph instance.
-    :param maxcost: Do not search for nodes more than maxcost away.
-    :param verbose: the debug level
+    :param: maxcost: Do not search for nodes more than maxcost away.
+    :param: verbose: the debug level
     :return: A tuple of the set of visited nodes and a set of the goal nodes
 
              The Node's distance field is updated in each node in the
@@ -210,6 +241,7 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
         # trace(3, 'unvisited: {}', unvisited_queue)
     # Convert the set of goals into a list sorted by column
     # goals = sorted(list(goals), key=lambda node: node.col, reverse=True)
+    # print ("****returning from dijkstra")
     return visited, goals
 
 
@@ -268,8 +300,11 @@ def choose_goal(player: Player, graph: Graph) -> Node:
             score += cols * config.TRAIN_COLUMN_MULTIPLIER
         scores.append((node, score))
     scores.sort(key=lambda x: x[1])
-    if _verbose >= 2:
-        print(f'choose_goal: {scores=}')
+    if _verbose >= 3:
+        # slist = [(str(s[0]), s[1]) for s in scores]
+        slist = ", ".join(["(" + str(s[0]) + ", " + str(s[1]) + ")" for s in scores])
+        trace(3, 'scores={}', slist)
+    trace(2, '{}->{}', truck_node, scores[-1][0])
     return scores[-1][0]  # return the node with the highest score
 
 
@@ -297,33 +332,86 @@ def build_oilrig(player: Player):
     player.rigs_in_use.append(site)
     player.free_oil_rigs -= 1
     site.add_derrick()
+    trace(2, 'player {}: {}, oil reserve: {}, cash now: {}, free rigs: {} ',
+          player, site, site.oil_reserve, player.cash, player.free_oil_rigs)
 
 
-def transport_oil(player: Player):
+def transport_oil(player: Player, game: Game):
+    """
+    All players have a tank at each company. During Action 6 they remove
+    one oil marker from each rig and transport it to one of the tanks.
 
-    if not player.rigs_in_use:
-        return
-    exhausted_rigs = []
+    """
+
+    def transport_available() -> bool:
+        """
+        Determine if a train is available to transport the oil. If my train
+        can do it, just return True. If the black train or an opponent's train
+        is available, pay them if the cash is available, otherwise return False
+
+        @return: True if a train is available, false otherwise
+        """
+        if node.col <= player.train_col:
+            return True
+        # I can't use my train. Try the black train and the opponents' trains
+        if player.cash < config.TRANSPORT_COST:
+            return False
+        farthest_players = []
+        farthest_col = -1
+        for opponent in game.players:
+            if opponent.id == player.id:
+                continue
+            if opponent.train_col > farthest_col:
+                farthest_players = [opponent]
+                farthest_col = opponent.train_col
+            elif opponent.train_col == farthest_col:
+                farthest_players.append(opponent)
+        if game.black_train_col > farthest_col:
+            if node.col > game.black_train_col:
+                return False
+            player.cash -= config.TRANSPORT_COST
+            return True
+        # The black train column is <= the farthest opponent
+        if farthest_col < node.col:
+            return False
+        player.cash -= config.TRANSPORT_COST
+        # Payment goes in equal measure to the opponents who were most advanced.
+        # In the rare case that the black train is just as advanced as the
+        # farthest player, the Baron gets a share.
+        total_transporters = len(farthest_players)
+        if game.black_train_col == farthest_col:
+            total_transporters += 1
+        payment = config.TRANSPORT_COST / total_transporters
+        for opponent in farthest_players:
+            opponent.cash += payment
+        return True
+
+    def remove_marker_from_rig():
+        node.oil_reserve -= 1
+        if node.oil_reserve == 0:
+            player.rigs_in_use.remove(node)
+            player.free_oil_rigs += 1
+            node.remove_derrick()
+
     for node in player.rigs_in_use:
-        # Select the tank with least oil
+        assert node.oil_reserve > 0  # sanity check
+        # Select the tank with the least oil
+        if not transport_available():
+            # Return the marker to the stockpile
+            remove_marker_from_rig()
+            game.oil_marker_stockpile += 1
+            continue
         leastmarkers = sys.maxsize
-        tank = None  # avoid pycharm warning
+        emptiest_tank = -1  # avoid pycharm warning
         for tankn in range(config.NCOMPANIES):
             if (markers := player.storage_tanks[tankn]) < leastmarkers:
                 leastmarkers = markers
-                tank = tankn
+                emptiest_tank = tankn
         # Move one oil marker to my tank at the selected oil company
-        assert node.oil_reserve > 0
-        player.storage_tanks[tank] += 1
-        node.oil_reserve -= 1
-        if node.oil_reserve == 0:
-            exhausted_rigs.append(node)
-    for node in exhausted_rigs:
-        player.rigs_in_use.remove(node)
-        player.free_oil_rigs += 1
-        node.remove_derrick()
-    trace(2, 'Action 6: player {}, rigs {}', player.id,
-          [(repr(n), n.oil_reserve) for n in player.rigs_in_use])
+        remove_marker_from_rig()
+        player.storage_tanks[emptiest_tank] += 1
+    trace(2, 'Action 6: player {}, rigs, reserve {}', player.id,
+          [(str(n), n.oil_reserve) for n in player.rigs_in_use])
 
 
 def surrender_licenses(player: Player, required: int, game: Game):
@@ -338,7 +426,11 @@ def surrender_licenses(player: Player, required: int, game: Game):
         license_card = licenses.pop()
         game.license_discards.append(license_card)
 
+    if game.licenses_exhausted:
+        trace(2, 'Licenses not exhausted.')
+        game.licenses_exhausted = False
     total_surrendered = required
+    trace(3, 'required = {}', required)
     if required % 2 == 1:  # if odd number of licenses needed
         if player.single_licenses:
             one_license(player.single_licenses)
@@ -405,13 +497,17 @@ def sell_oil(company: int, game: Game, player_list: list[Player]):
 
     Bid = NamedTuple('Bid', [('player', Player), ('value', int)])
     bids: list = []
+    storage = []
+    for player in player_list:
+        storage.append(player.storage_tanks[company])
+    trace(2, 'company {}, storage: {}', company, storage)
     for player in player_list:
         bid = Bid(player, compute_bid())
-        trace(2, 'Sell Oil, player {}, single/double licenses: {}/{}, '
-                 'total: {} bid: {}, company: {}, price: ${}',
+        trace(2, 'player {}, single/double licenses: {}/{}, '
+                 'total: {} bid: {}, price: ${}',
               player.id, len(player.single_licenses),
               len(player.double_licenses), player.nlicenses, bid.value,
-              company, game.selling_price[company])
+              game.selling_price[company])
         if bid.value:
             bids.append(bid)
     # Find the highest bid (tie goes to first found)
@@ -495,7 +591,7 @@ def one_turn(turn: int, playerlist: list[Player], game: Game):
 
     # Action 3: Hand out licenses
     for player in game.players:
-        deal_licenses(player, game.licenses, game.license_discards)
+        deal_licenses(player, game)
 
     # Action 4 Move the truck and locomotive and do special actions
 
@@ -503,14 +599,16 @@ def one_turn(turn: int, playerlist: list[Player], game: Game):
         nextnode: Node = choose_goal(player, game.graph)
         trace(2, 'Action 4: player {}, truck_node: {} —> {} {}, licenses: '
               '{}, cash: ${}',
-              player, repr(player.truck_node), repr(nextnode),
+              player, player.truck_node, str(nextnode),
               player.actions, player.nlicenses, player.cash)
+        if nextnode.goal:
+            nextnode.goal_reached = True
         # todo: Examine goal nodes en route to this node
         # 4a: Placing and moving trucks
         player.truck_node.truck = None
         nextnode.truck = player
         player.truck_node = nextnode
-        player.truck_hist.append(nextnode)
+        player.truck_hist.append(str(nextnode))
 
         # 4b: Searching for Oil
         # This is handled in choose_goal() which peeks at sites if allowed
@@ -528,7 +626,7 @@ def one_turn(turn: int, playerlist: list[Player], game: Game):
 
     # Action 6: Drilling and transporting the oil
     for player in playerlist:
-        transport_oil(player)
+        transport_oil(player, game)
 
     # Action 7: Selling oil
     for company in range(config.NCOMPANIES):
@@ -596,7 +694,7 @@ def compute_score(playerlist: list[Player]):
               rigs, oil_reserve, player.train_col, player.cash)
 
 
-def play_game(graph, game):
+def play_game(game):
     game_ended = False
     turn = 0
     playerlist = []
@@ -612,6 +710,8 @@ def play_game(graph, game):
                 if playern >= game.nplayers:
                     playern = 0
             game_ended = one_turn(turn, playerlist, game)
+            if _verbose >= 2:
+                game.audit_licenses()
             if game_ended:
                 break
         if turn >= _args.turns:
@@ -647,20 +747,23 @@ def main():
         time_dijkstra(graph, dijkstra, _args)
     elif _args.dijkstra:
         one_dijkstra(graph, dijkstra, _args, _verbose)
+        # print("*** returned from one_dijkstra")
     else:
-        winners = [0 for n in range(_args.nplayers)]
+        winners = [0 for _n in range(_args.nplayers)]
         ties = 0
         random.seed(config.RANDOM_SEED)
         starttime = time.process_time()
         for ngame in range(_args.games):
+            trace(3, "game # {}", ngame)
             graph = Graph(rawboard, _args.nplayers)
             game = Game(graph, _nplayers)
-            winnerlist = play_game(graph, game)
+            winnerlist = play_game(game)
             for w in winnerlist:
                 winners[w] += 1
             if len(winnerlist) > 1:
                 ties += 1
             # print(f'{winnerlist=}')
+
         elapsed = time.process_time() - starttime
         print(f'{ties=}, {winners=}, {elapsed=:6.3f}')
     if _args.verbose >= 3:
@@ -689,7 +792,7 @@ def getargs():
     ''')
     parser.add_argument('-g', '--games', type=int, default=1,
                         help='''
-    Number of games to play.
+    Number of games to play. Default is 1.
     ''')
     parser.add_argument('-k', '--dijkstra', action='store_true', help='''
     Do one run of dijkstra. Implies -p. For testing.
