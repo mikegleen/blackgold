@@ -73,7 +73,6 @@ class Graph:
         """
         for node in self.graph:
             node.distance = sys.maxsize
-            node.visited = False
             node.previous = None
 
     def dump_board(self):
@@ -160,6 +159,6 @@ class Graph:
             r2 = [pr_wells(n)
                   + from_arrow(n)
                   + (Graph.RED + str(n.goal) + Graph.RESET if n.goal else ' ')
-                  for n in row]
+                  for n in row]  # iterating over nodes in row
             print('   |' + '|'.join(r2) + '|')
         print('   ' + '|—————' * self.columns + '|')
