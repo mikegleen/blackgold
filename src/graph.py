@@ -145,7 +145,7 @@ class Graph:
                 wells = '   '
                 # return well * node.wells + (' ' * (3 - node.wells))
             return wells
-        
+
         def from_arrow(node):
             if not (previous := node.previous):
                 return ' '
