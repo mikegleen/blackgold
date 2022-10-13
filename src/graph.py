@@ -138,8 +138,14 @@ class Graph:
             if node.exhausted:
                 return 'X  '
             well = 'D' if node.derrick else 'w'
-            return well * node.wells + (' ' * (3 - node.wells))
-
+            if node.wells:
+                wells = Graph.YELLOW + well * node.wells + (
+                        ' ' * (3 - node.wells)) + Graph.RESET
+            else:
+                wells = '   '
+                # return well * node.wells + (' ' * (3 - node.wells))
+            return wells
+        
         def from_arrow(node):
             if not (previous := node.previous):
                 return ' '
