@@ -117,13 +117,13 @@ class Node:
         # s += f'totcost: {"∞" if self.distance == sys.maxsize else self.distance}, '
         # s += f'adjacent: {sorted(self.adjacent)}'
 
-        s = f'{self.id} t: {self.terrain}, '
+        s = f'Node {self.id} t: {self.terrain}, '
         s += f'w: {self.wells} '
         s += f'ex={e}, goal={g}, derrick={d}, truck={t}, '
         s += f'previous={self.previous}, '
         s += f'dist: {"∞" if self.distance == sys.maxsize else self.distance}, '
-        sa = sorted(self.adjacent)
-        s += f'adjacent: {(ss.id for ss in sa)}'
+        sa = sorted(list(self.adjacent))
+        s += f'adjacent: {[ss.id for ss in sa]}'
         return s
 
     def __str__(self):
