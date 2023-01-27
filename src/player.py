@@ -32,6 +32,8 @@ class Player:
 
     def advance_train(self, verbos):
         """
+        The same movement points are used for the truck and the train.
+
         We've already moved the truck. If any movement points are left, advance
         the train.
         """

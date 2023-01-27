@@ -196,7 +196,7 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
     def idist(distance):
         return "∞" if distance == sys.maxsize else distance
 
-    graph.reset_graph()
+    graph.reset_graph()  # distances = ∞, clear previous
     root.distance = 0
     unvisited_queue = [root]
     visited = dict()  # Use a dictionary instead of a set to preserve order
@@ -204,7 +204,7 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
     while unvisited_queue:
         # Pops a vertex with the smallest distance
         current = heapq.heappop(unvisited_queue)
-        visited[current] = None
+        visited[current] = None  # kludge an ordered set
         if current.goal:
             goals.add(current)
         # trace(3, 'current={} current.adjacent={}', current, current.adjacent)
@@ -212,19 +212,23 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
             trace(3, '    stopping at distance {}.', current.distance)
             continue
         for nextn in sorted(current.adjacent):  # iterate over adjacent nodes
-            # trace(3, 'nextn={} {}', nextn, "DERRICK" if nextn.derrick else "")
+            trace(4, 'nextn={}, current={} {}', nextn, current,
+                  "DERRICK" if nextn.derrick else "")
             if nextn in visited:  # if visited, skip
-                # trace(3, 'skipping, visited: nextn={}', nextn)
+                trace(4, 'skipping, visited: nextn={}, current={}', nextn,
+                      current)
                 continue
             if nextn.derrick or nextn.truck:
-                # trace(3, 'skipping, derrick or truck: nextn={}', nextn)
+                trace(4, 'skipping, derrick or truck: nextn={}, current={}',
+                      nextn, current)
                 continue
             new_dist = current.distance + nextn.terrain
             nextn_dist = nextn.distance
             #
             # If the next node has wells, the player may not stop there.
             if nextn.wells and new_dist >= maxcost:
-                # trace(3, 'skipping, wells: nextn={}', nextn)
+                trace(4, 'skipping, wells: nextn={}, current={}', nextn,
+                      current)
                 continue
             if new_dist < nextn_dist and new_dist <= maxcost:
                 nextn.distance = new_dist
@@ -237,7 +241,7 @@ def dijkstra(graph: Graph, root: Node, maxcost=sys.maxsize, verbose=1):
                 # print('%s : current = %s next = %s new_dist = %s'
                 #       % (updated, current.id, nextn.id, nextn_dist))
                 print(f'{updated}: current: {current.id}, next: {nextn.id}, '
-                      f'dist: {idist(nextn_dist)} -> {nextn.distance}')
+                      f'dist: {idist(nextn_dist)} -> {idist(nextn.distance)}')
         # trace(3, 'unvisited: {}', unvisited_queue)
     # Convert the set of goals into a list sorted by column
     # goals = sorted(list(goals), key=lambda node: node.col, reverse=True)
@@ -741,7 +745,7 @@ def main():
     nrows, ncols = graph.get_rows_cols()
     if _verbose >= 1:
         m = _args.maxcost
-        print(f'{nrows=} {ncols=}'
+        print(f'root: <{_args.row},{_args.column}> {nrows=} {ncols=}'
               f' maxcost: {str(m) if m < sys.maxsize else "∞"}')
     if _args.timeit:
         time_dijkstra(graph, dijkstra, _args)

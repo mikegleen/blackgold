@@ -5,7 +5,7 @@ from collections import namedtuple
 import time
 
 
-GSite = namedtuple('GSite', 'wellsq goalsq')
+GSite = namedtuple('GSite', 'wellnode goalnode')
 
 
 def goals_on_path(goal_node):
@@ -20,9 +20,9 @@ def goals_on_path(goal_node):
     ret = []
     node = goal_node
     while node:
-        for n in node.adjacent:
-            if n.wells:
-                ret.append(GSite(n, node))
+        for adj in node.adjacent:
+            if adj.wells:
+                ret.append(GSite(adj, node))
         node = node.previous
         # If the node has wells, we're not allowed to stop there.
         while node and node.wells:
@@ -58,19 +58,28 @@ def time_dijkstra(graph, dijkstra, _args):
     print(f'Time per iteration: {ms_per_iteration:6.2} MS')
 
 
-def one_dijkstra(graph, dijkstra, _args, _verbose):
+def one_dijkstra(graph, dijkstra, args, verbose):
     """
     Called if --dijkstra is selected on the command line.
-    @param graph:
+    @param graph: Graph instance
+    @param dijkstra: function to call
+    @param args: argparse arguguments
+    @param verbose: verbosity
     @return: dict of drill sites on the path to our goal
     """
-    goals = dijkstra(graph, graph.board[_args.row][_args.column],
-                     maxcost=_args.maxcost, verbose=_args.verbose)
+    visited, goals = dijkstra(graph, graph.board[args.row][args.column],
+                              maxcost=args.maxcost, verbose=args.verbose)
     # print(goals[1])
-    gsites = {g: goals_on_path(g) for g in goals[1]}
-    if _verbose >= 2:
-        print(f'{goals=}')
-        print(f'{gsites=}')
+    if verbose >= 2:
+        print(f'{type(goals)=} {len(goals)} goals found.')
+        for g in goals:
+            # print(type(goals[g]), goals[g].id)
+            print(type(g))
+        # print(f'{goals=}')
+    gsites = {g: goals_on_path(g) for g in goals}
+    if verbose >= 2:
+        print(f'{type(gsites)=}')
+        for g in gsites:
+            print(type(g), g.id, g.goal, [(gg.wellnode.id, gg.goalnode.id) for gg in gsites[g]])
+        # print(f'{gsites=}')
     return gsites
-
-
