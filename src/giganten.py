@@ -126,7 +126,9 @@ def deal_licenses(player: Player, game: Game):
             player.double_licenses.append(card)
     player.nlicenses = (len(player.single_licenses)
                         + 2 * len(player.double_licenses))
-    # print(f'deal_licenses: {player.id=} licenses:{oldnlicenses}->{player.nlicenses} cards:{oldlencards}->{len(cards)}, '
+    # print(f'deal_licenses: {player.id=} '
+    #       f'licenses:{oldnlicenses}->{player.nlicenses} '
+    #       f'cards:{oldlencards}->{len(cards)}, '
     #       f'discards: {oldlendiscards}->{len(discards)}')
     return
 
@@ -460,6 +462,9 @@ def surrender_licenses(player: Player, required: int, game: Game):
                                 + 2 * len(player.double_licenses))
 
 
+Bid = NamedTuple('Bid', [('player', Player), ('value', int)])
+
+
 def sell_oil(company: int, game: Game, player_list: list[Player]):
     """
     This isn't like a normal auction where bids are made in turn. Here, each
@@ -499,7 +504,6 @@ def sell_oil(company: int, game: Game, player_list: list[Player]):
             mybid = None
         return mybid
 
-    Bid = NamedTuple('Bid', [('player', Player), ('value', int)])
     bids: list = []
     storage = []
     for player in player_list:
@@ -835,6 +839,8 @@ def getargs():
 if __name__ == '__main__':
     module_name = os.path.basename(__file__)
     assert sys.version_info >= (3, 8)
+    if len(sys.argv) == 1:
+        sys.argv.append('-h')
     _args = getargs()
     _maxcost = _args.maxcost
     _verbose = _args.verbose
