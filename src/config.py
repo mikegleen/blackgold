@@ -45,7 +45,7 @@ BUILDING_COST = [0, 4000, 6000, 8000]
 # Cost to transport oil on the black train or on an opponent's train
 TRANSPORT_COST = 3000
 
-# The price paid for oilrigs at the end of the game
+# The price paid for oilrigs and markers at the end of the game
 GAME_END_RIG_PRICE = (5000, 4000, 3000, 2000)
 GAME_END_MARKER_PRICE = 1000
 """

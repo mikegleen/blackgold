@@ -11,6 +11,7 @@ import os.path
 import random
 import sys
 import time
+from colorama import Fore, Style
 
 from test.test_dijkstra import time_dijkstra, one_dijkstra
 from node import Node
@@ -19,12 +20,16 @@ from player import Player
 import oil_price
 
 
-def trace(level, template, *args):
+def trace(level, template, *args, color=None):
     if _args.verbose >= level:
         stack = inspect.stack()
         # fileinfo = f'{module_name}: {stack[1][2]}: {stack[1][3]}'
         fileinfo = f'{stack[1][2]}: {stack[1][3]}'
-        print(fileinfo, template.format(*args))
+        if color:
+            print(fileinfo,
+                  f'{color}{template.format(*args)}{Style.RESET_ALL}')
+        else:
+            print(fileinfo, template.format(*args))
 
 
 class Game:
@@ -32,7 +37,7 @@ class Game:
         assert nplayers <= len(config.TRUCK_INIT_ROWS)
         self.nplayers = nplayers
         self.black_train_col = 0
-        self.selling_price: list[int] = [5000] * config.NCOMPANIES
+        self.selling_price: list[int] = [config.INITIAL_PRICE] * config.NCOMPANIES
         self.players = []
         self.graph = graph
         self.oil_marker_stockpile = config.INITIAL_OIL_MARKERS
@@ -580,7 +585,7 @@ def one_turn(turn: int, playerlist: list[Player], game: Game):
         cardn = random.randrange(len(action_cards))
         card = action_cards[cardn]
 
-        if type(card) == config.RedActionCard:  # Selected the red card
+        if isinstance(card, config.RedActionCard):  # Selected the red card
             nlicenses = red_card.nlicenses
             movement = red_card.movement
             markers = red_card.markers
@@ -838,7 +843,7 @@ def getargs():
 
 if __name__ == '__main__':
     module_name = os.path.basename(__file__)
-    assert sys.version_info >= (3, 8)
+    assert sys.version_info >= (3, 11)
     if len(sys.argv) == 1:
         sys.argv.append('-h')
     _args = getargs()
